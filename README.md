@@ -20,6 +20,8 @@ Mount these existing files under `/secrets`:
 
 Reuse the writable `/state` directory to carry over the Telegram update offset and Decluttarr cursor. Stop the Python bot before starting the Java bot with the same token. For Decluttarr notifications, bind mount the log directory at `/decluttarr-logs` (containing `logs.txt`) and optionally mount the config file at `/decluttarr-config.yaml`. Both mounts can be read-only.
 
+`/disk activity` reports disk rates and the busiest readable processes using a separate two-second sample of `/proc/<pid>/io`. Mount the NAS host's `/proc` read-only at `/host-proc`, as in `compose.yaml`. Access to other users' process counters depends on NAS and container permissions; the response indicates when the sample is incomplete. Rates are totals across devices and may omit cached I/O or kernel activity.
+
 ## Publish for Synology URL import
 
 The manual **Publish image** workflow publishes to Docker Hub. To set up publishing:
