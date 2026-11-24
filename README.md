@@ -22,9 +22,9 @@ Reuse the writable `/state` directory to carry over the Telegram update offset a
 
 ## Publish for Synology URL import
 
-The manual **Publish image** workflow publishes to GHCR. To publish the same image to Docker Hub as well:
+The manual **Publish image** workflow publishes to both Docker Hub and GHCR. To set up Docker Hub publishing:
 
 1. Create the `bateacapitalassistant` repository on Docker Hub. Use public visibility if you want Synology to import without credentials.
 2. In the GitHub repository's **Settings → Secrets and variables → Actions**, add the repository variable `DOCKERHUB_USERNAME` with your Docker Hub username and the repository secret `DOCKERHUB_TOKEN` with a Docker Hub access token that can write to the repository.
-3. In **Actions → Publish image → Run workflow**, enable **Also publish to Docker Hub for Synology URL import**. The workflow publishes `latest` and the selected version tag to both registries.
+3. In **Actions → Publish image → Run workflow**, start the workflow. It publishes `latest` and the selected version tag to both registries.
 4. In Synology **Container Manager → Image → Action → Import → Add From URL**, enter `https://hub.docker.com/r/<docker-hub-username>/bateacapitalassistant`.
