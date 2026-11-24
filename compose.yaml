@@ -3,6 +3,8 @@ services:
     build: .
     image: bateacapitalassistant:local
     restart: unless-stopped
+    cap_add:
+      - SYS_PTRACE
     volumes:
       - ${BATEA_SECRETS_HOST:?Set BATEA_SECRETS_HOST}:/secrets:ro
       - ${BATEA_STATE_HOST:?Set BATEA_STATE_HOST}:/state
