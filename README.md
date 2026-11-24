@@ -24,6 +24,8 @@ Reuse the writable `/state` directory to carry over the Telegram update offset a
 
 The disk watchdog checks physical-disk busy time every 10 seconds. It notifies allowed Telegram users when a disk remains above 80% busy for one minute and sends a recovery notice after it remains below 60% for one minute. It starts sampling process I/O only after 40 seconds of high activity. Process rates cover all disks and do not establish which disk a process used. Active incidents and pending notifications are stored in `/state/disk-watchdog.json`, and failed sends are retried. An interruption after Telegram accepts a message but before its state is saved may result in a duplicate notification.
 
+Disk reports include a script or JAR filename for recognized runtimes when available, and a short container ID when the process cgroup identifies a container. They do not include complete command lines. These hints are best effort; resolving a container ID to a Docker name requires Docker access.
+
 ## Publish for Synology URL import
 
 The manual **Publish image** workflow publishes to Docker Hub. To set up publishing:

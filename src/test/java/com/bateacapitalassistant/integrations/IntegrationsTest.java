@@ -1,10 +1,35 @@
 package com.bateacapitalassistant.integrations;
 
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
+
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 
 import static org.junit.jupiter.api.Assertions.*;
 
 class IntegrationsTest {
+    @Test
+    void identifiesScriptAndContainerWithoutExposingArguments(@TempDir Path proc) throws Exception {
+        Path process = Files.createDirectory(proc.resolve("123"));
+        String stat = "123 (deno) S " + "0 ".repeat(18) + "9876 0";
+        Files.writeString(process.resolve("stat"), stat);
+        Files.write(process.resolve("cmdline"), "deno\0run\0/app/server.ts\0--token=secret\0".getBytes(StandardCharsets.UTF_8));
+        Files.writeString(process.resolve("cgroup"), "8:cpu:/docker/0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\n");
+        String hint = ProcessDiskIo.applicationHint(proc, "123", "9876", "deno");
+        assertEquals(" · server.ts [container 0123456789ab]", hint);
+        assertFalse(hint.contains("secret"));
+        assertEquals("", ProcessDiskIo.applicationHint(proc, "123", "other-start", "deno"));
+    }
+
+    @Test
+    void ignoresUntrustedCommandArguments() {
+        assertEquals("server.ts", ProcessDiskIo.scriptName("deno", "deno\0run\0server.ts\0".getBytes(StandardCharsets.UTF_8)));
+        assertEquals("", ProcessDiskIo.scriptName("deno", "deno\0--token=secret.js\0".getBytes(StandardCharsets.UTF_8)));
+        assertEquals("", ProcessDiskIo.scriptName("deno", "deno\0run\0https://host/app.ts?token=secret\0".getBytes(StandardCharsets.UTF_8)));
+    }
+
     @Test
     void reportsProcessRatesAndIgnoresReusedPids() {
         var before = new ProcessDiskIo.Snapshot(java.util.Map.of(
