@@ -2,9 +2,14 @@ services:
   bateacapitalassistant:
     build: .
     image: bateacapitalassistant:local
-    network_mode: host
     restart: unless-stopped
     volumes:
       - ${BATEA_SECRETS_HOST:?Set BATEA_SECRETS_HOST}:/secrets:ro
       - ${BATEA_STATE_HOST:?Set BATEA_STATE_HOST}:/state
       - /proc:/host-proc:ro
+      - /proc/loadavg:/host-metrics/loadavg:ro
+      - /proc/uptime:/host-metrics/uptime:ro
+      - /proc/diskstats:/host-metrics/diskstats:ro
+      - /proc/stat:/host-metrics/stat:ro
+      - /proc/meminfo:/host-metrics/meminfo:ro
+      - ${BATEA_VOLUME_HOST:?Set BATEA_VOLUME_HOST}:/host-volume1:ro

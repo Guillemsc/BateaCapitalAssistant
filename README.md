@@ -6,7 +6,7 @@ Private Telegram command bot for Sonarr, Radarr, qBittorrent, and the NAS tools 
 
 Build and test with `mvn clean verify`. The executable is `target/bateacapitalassistant-1.0.0.jar`.
 
-For Docker Compose, set `BATEA_SECRETS_HOST` and `BATEA_STATE_HOST` to the existing host directories and run `docker compose up --build -d`. The container uses host networking to reach the NAS tools MCP endpoint at `127.0.0.1:4097`. Sonarr and Radarr use the existing NAS address and ports in `MediaServices.java`.
+For Docker Compose, set `BATEA_SECRETS_HOST` and `BATEA_STATE_HOST` to the existing host directories and run `docker compose up --build -d`. The Java bot connects directly to the NAS services. Set `BATEA_VOLUME_HOST` to a path on the NAS volume to report its free space. The integrations use the existing NAS address and ports in the source.
 
 Mount these existing files under `/secrets`:
 
@@ -14,7 +14,7 @@ Mount these existing files under `/secrets`:
 | --- | --- |
 | `telegram-bot-token` | Bot token |
 | `telegram-access.json` | JSON object with an `allowed_user_ids` array of numeric Telegram IDs |
-| `nas-tools-token` | Bearer token for the NAS tools service |
+| `homeassistant-token`, `tdarr-api-key`, `seerr-api-key`, `downtify-device-token` | Credentials for the respective integrations |
 | `sonarr-api-key`, `radarr-api-key` | The respective API keys |
 | `qbittorrent.json` | JSON object with `url`, `username`, and `password` |
 

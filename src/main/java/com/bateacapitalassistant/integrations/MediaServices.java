@@ -1,4 +1,4 @@
-package com.bateacapitalassistant;
+package com.bateacapitalassistant.integrations;
 
 import com.fasterxml.jackson.databind.JsonNode;
 
@@ -10,9 +10,9 @@ import java.time.format.DateTimeFormatter;
 import java.io.IOException;
 import java.util.*;
 
-import static com.bateacapitalassistant.Commands.*;
+import static com.bateacapitalassistant.integrations.IntegrationSupport.*;
 
-final class MediaServices {
+public final class MediaServices {
     private static final Set<String> ATTENTION = Set.of("metaDL", "forcedMetaDL", "stalledDL", "error", "missingFiles");
     private static final Set<String> DOWNLOADING = Set.of("downloading", "forcedDL");
     private static final Map<String, String> TORRENT_LABELS = Map.of("metaDL", "FETCHING METADATA",
@@ -23,12 +23,12 @@ final class MediaServices {
 
     private static JsonNode arr(boolean sonarr, String path, Object body) throws IOException, InterruptedException {
         String port = sonarr ? "8989" : "7878";
-        String key = Bridge.secret(sonarr ? "sonarr-api-key" : "radarr-api-key");
-        return Bridge.request("http://192.168.1.152:" + port + "/api/v3/" + path, body,
+        String key = IntegrationSupport.secret(sonarr ? "sonarr-api-key" : "radarr-api-key");
+        return IntegrationSupport.request("http://192.168.1.152:" + port + "/api/v3/" + path, body,
                 Map.of("X-Api-Key", key), 25);
     }
 
-    static String queue(boolean sonarr) throws IOException, InterruptedException {
+    public static String queue(boolean sonarr) throws IOException, InterruptedException {
         var queue = arr(sonarr, "queue?page=1&pageSize=15" + (sonarr
                 ? "&includeUnknownSeriesItems=true&includeSeries=true&includeEpisode=true"
                 : "&includeUnknownMovieItems=true&includeMovie=true"), null);
@@ -65,7 +65,7 @@ final class MediaServices {
         return String.join("\n", lines);
     }
 
-    static String searchSeason(List<String> parts) throws IOException, InterruptedException {
+    public static String searchSeason(List<String> parts) throws IOException, InterruptedException {
         String usage = "Use /shows status or /shows search \"Exact Show Title\" season 6. Search can automatically grab releases.";
         int count = parts.size();
         if (count < 5 || !parts.get(1).equalsIgnoreCase("search") || !parts.get(count - 2).equalsIgnoreCase("season")
@@ -120,22 +120,22 @@ final class MediaServices {
     }
 
     private static JsonNode torrentGet(HttpClient client, String base, String path) throws IOException, InterruptedException {
-        return Bridge.JSON.readTree(Bridge.http(client, base + "/api/v2/" + path, null, Map.of("Referer", base), 20));
+        return IntegrationSupport.JSON.readTree(IntegrationSupport.http(client, base + "/api/v2/" + path, null, Map.of("Referer", base), 20));
     }
 
-    static String torrents() throws IOException, InterruptedException {
-        var config = Bridge.JSON.readTree(Bridge.SECRETS.resolve("qbittorrent.json").toFile());
+    public static String torrents() throws IOException, InterruptedException {
+        var config = IntegrationSupport.JSON.readTree(IntegrationSupport.SECRETS.resolve("qbittorrent.json").toFile());
         String base = config.required("url").asText().replaceAll("/+$", "");
         var client = HttpClient.newBuilder().cookieHandler(new CookieManager()).build();
         String credentials = "username=" + encode(config.required("username").asText())
                 + "&password=" + encode(config.required("password").asText());
-        String login = Bridge.http(client, base + "/api/v2/auth/login", credentials,
+        String login = IntegrationSupport.http(client, base + "/api/v2/auth/login", credentials,
                 Map.of("Referer", base, "Content-Type", "application/x-www-form-urlencoded"), 20).strip();
         if (!login.isEmpty() && !login.equals("Ok."))
             throw new IllegalStateException("qBittorrent authentication failed");
         var info = torrentGet(client, base, "transfer/info");
         var torrents = rows(torrentGet(client, base, "torrents/info"));
-        var counts = Bridge.JSON.createObjectNode();
+        var counts = IntegrationSupport.JSON.createObjectNode();
         for (var torrent : torrents) {
             String state = value(torrent, "state", "unknown");
             counts.put(state, counts.path(state).asInt() + 1);

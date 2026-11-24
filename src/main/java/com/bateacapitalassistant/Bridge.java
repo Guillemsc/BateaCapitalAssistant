@@ -2,6 +2,9 @@ package com.bateacapitalassistant;
 
 import com.fasterxml.jackson.databind.*;
 import com.fasterxml.jackson.databind.node.*;
+import com.bateacapitalassistant.integrations.IntegrationSupport;
+
+import static com.bateacapitalassistant.integrations.IntegrationSupport.*;
 
 import java.io.*;
 import java.net.*;
@@ -13,7 +16,7 @@ import java.util.*;
 import java.util.regex.Pattern;
 
 public final class Bridge {
-    static final ObjectMapper JSON = new ObjectMapper();
+    static final ObjectMapper JSON = IntegrationSupport.JSON;
     static final Path SECRETS = Path.of("/secrets");
     private static final int MESSAGE_CHUNK_LENGTH = 4_000;
     private static final int MAX_INPUT_LENGTH = 8_000;
@@ -24,7 +27,6 @@ public final class Bridge {
     static final Set<String> REFRESHABLE = Set.of("/shows", "/films", "/qbittorrent", "/transcoding");
     static final Map<String, String> ALIASES = Map.of("/sonarr", "/shows", "/sonar", "/shows",
             "/radarr", "/films", "/tdarr", "/transcoding", "/seer", "/seerr");
-    static final HttpClient HTTP = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(10)).build();
     static final List<Map<String, String>> MENU = List.of(
             menu("shows", "Show downloads and import issues (Sonarr)"),
             menu("films", "Film downloads and import issues (Radarr)"),
@@ -54,26 +56,6 @@ public final class Bridge {
 
     static Map<String, String> menu(String name, String description) {
         return Map.of("command", name, "description", description);
-    }
-
-    static String secret(String name) throws IOException {
-        return Files.readString(SECRETS.resolve(name)).strip();
-    }
-
-    static String http(HttpClient client, String url, String body, Map<String, String> headers, int seconds)
-            throws IOException, InterruptedException {
-        var request = HttpRequest.newBuilder(URI.create(url)).timeout(Duration.ofSeconds(seconds));
-        headers.forEach(request::header);
-        if (body != null) request.POST(HttpRequest.BodyPublishers.ofString(body));
-        var response = client.send(request.build(), HttpResponse.BodyHandlers.ofString());
-        if (response.statusCode() / 100 != 2) throw new IOException("HTTP request failed: " + response.statusCode());
-        return response.body();
-    }
-
-    static JsonNode request(String url, Object body, Map<String, String> headers, int seconds) throws IOException, InterruptedException {
-        var all = new HashMap<>(headers);
-        all.put("Content-Type", "application/json");
-        return JSON.readTree(http(HTTP, url, body == null ? null : JSON.writeValueAsString(body), all, seconds));
     }
 
     private static ObjectNode readJsonObject(Path path) throws IOException {

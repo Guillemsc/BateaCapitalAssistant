@@ -1,4 +1,4 @@
-package com.bateacapitalassistant;
+package com.bateacapitalassistant.integrations;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -10,7 +10,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
-final class ProcessDiskIo {
+public final class ProcessDiskIo {
     private static final Duration SAMPLE_INTERVAL = Duration.ofSeconds(2);
     private static final int MAX_PROCESSES = 10;
 
@@ -26,7 +26,7 @@ final class ProcessDiskIo {
     record Rate(String pid, String name, double readBytes, double writeBytes) {
     }
 
-    static List<String> sample(Path proc) throws InterruptedException {
+    public static List<String> sample(Path proc) throws InterruptedException {
         try {
             long start = System.nanoTime();
             Snapshot before = read(proc);
@@ -83,10 +83,10 @@ final class ProcessDiskIo {
         var lines = new ArrayList<String>();
         lines.add("\nProcesses by disk I/O — two-second sample");
         for (Rate rate : rates.stream().limit(MAX_PROCESSES).toList()) {
-            String name = Commands.limit(rate.name().replaceAll("[\\p{Cntrl}]", " "), 100);
+            String name = IntegrationSupport.limit(rate.name().replaceAll("[\\p{Cntrl}]", " "), 100);
             lines.add("• " + name + " (PID " + rate.pid() + "): read "
-                    + Commands.size(Bridge.JSON.getNodeFactory().numberNode(rate.readBytes())) + "/s; write "
-                    + Commands.size(Bridge.JSON.getNodeFactory().numberNode(rate.writeBytes())) + "/s");
+                    + IntegrationSupport.size(IntegrationSupport.JSON.getNodeFactory().numberNode(rate.readBytes())) + "/s; write "
+                    + IntegrationSupport.size(IntegrationSupport.JSON.getNodeFactory().numberNode(rate.writeBytes())) + "/s");
         }
         if (rates.isEmpty()) lines.add("No readable processes reported storage I/O during the sample.");
         if (before.inaccessible() > 0 || after.inaccessible() > 0)

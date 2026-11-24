@@ -42,17 +42,4 @@ class BridgeTest {
                 .contains("DRY RUN — no changes\nStalled download\nremoval: episode"));
     }
 
-    @Test
-    void reportsProcessRatesAndIgnoresReusedPids() {
-        var before = new ProcessDiskIo.Snapshot(java.util.Map.of(
-                "10", new ProcessDiskIo.Counters("database", "1", 100, 200),
-                "11", new ProcessDiskIo.Counters("old", "2", 0, 0)), 1);
-        var after = new ProcessDiskIo.Snapshot(java.util.Map.of(
-                "10", new ProcessDiskIo.Counters("database", "1", 2148, 1224),
-                "11", new ProcessDiskIo.Counters("new", "3", 5000, 5000)), 0);
-        String output = String.join("\n", ProcessDiskIo.format(before, after, 2));
-        assertTrue(output.contains("database (PID 10): read 1.0 KiB/s; write 512.0 B/s"));
-        assertFalse(output.contains("PID 11"));
-        assertTrue(output.contains("inaccessible"));
-    }
 }

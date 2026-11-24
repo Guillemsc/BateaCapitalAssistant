@@ -1,11 +1,13 @@
 package com.bateacapitalassistant;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.bateacapitalassistant.integrations.*;
+
+import static com.bateacapitalassistant.integrations.IntegrationSupport.*;
 
 import java.io.IOException;
 import java.util.*;
 import java.util.regex.Pattern;
-import java.util.stream.StreamSupport;
 
 final class Commands {
     static final Set<String> SUPPORTED = Set.of("/nas", "/disk", "/transcoding", "/seerr", "/downloads",
@@ -80,59 +82,6 @@ final class Commands {
         return parts;
     }
 
-    static String limit(String value, int count) {
-        return value.substring(0, value.offsetByCodePoints(0, Math.min(count, Bridge.length(value))));
-    }
-
-    static String value(JsonNode node, String field, String fallback) {
-        return node.path(field).asText(fallback);
-    }
-
-    static String first(String... choices) {
-        for (String choice : choices) if (choice != null && !choice.isEmpty()) return choice;
-        return "";
-    }
-
-    static List<JsonNode> rows(JsonNode node) {
-        return StreamSupport.stream(node.spliterator(), false).toList();
-    }
-
-    static String join(JsonNode node, String delimiter) {
-        return String.join(delimiter, rows(node).stream().map(JsonNode::asText).toList());
-    }
-
-    static String counts(JsonNode node, String delimiter, boolean sorted) {
-        Map<String, String> counts = sorted ? new TreeMap<>() : new LinkedHashMap<>();
-        node.fields().forEachRemaining(e -> counts.put(e.getKey(), e.getValue().asText()));
-        return String.join(delimiter, counts.entrySet().stream().map(e -> e.getKey() + ": " + e.getValue()).toList());
-    }
-
-    static String format(String format, Object... args) {
-        return String.format(Locale.ROOT, format, args);
-    }
-
-    static String size(JsonNode number) {
-        double value = number.asDouble();
-        for (String unit : List.of("B", "KiB", "MiB", "GiB", "TiB")) {
-            if (value < 1024 || unit.equals("TiB")) return format("%.1f %s", value, unit);
-            value /= 1024;
-        }
-        throw new AssertionError();
-    }
-
-    static JsonNode tool(String name, Object args) throws IOException, InterruptedException {
-        var reply = Bridge.request("http://127.0.0.1:4097/mcp", Map.of(
-                        "jsonrpc", "2.0", "id", 1, "method", "tools/call",
-                        "params", Map.of("name", name, "arguments", args)),
-                Map.of("Authorization", "Bearer " + Bridge.secret("nas-tools-token")), 45);
-        var result = reply.path("result");
-        if (reply.hasNonNull("error") || result.path("isError").asBoolean())
-            throw new IllegalStateException("Status service failed");
-        for (var part : result.path("content"))
-            if (part.path("type").asText().equals("text")) return Bridge.JSON.readTree(part.required("text").asText());
-        throw new IllegalStateException("Missing status result");
-    }
-
     String run(String command, String input) throws IOException, InterruptedException {
         List<String> parts;
         try {
@@ -155,8 +104,9 @@ final class Commands {
             case "/transcoding" -> status ? Status.transcoding() : HELP;
             case "/downloads" -> status ? Status.downloads() : HELP;
             case "/nas" -> status ? Status.nas() : HELP;
-            case "/disk" -> action.equals("help") ? HELP : action.equals("activity") && parts.size() == 2
-                    ? Status.disk() : "Use /disk activity for a two-second physical-disk sample.";
+            case "/disk" ->
+                    action.equals("help") ? HELP : parts.size() <= 2 && Set.of("status", "activity").contains(action)
+                            ? Status.disk() : "Use /disk activity for a two-second physical-disk sample.";
             case "/home" -> action.equals("status") && parts.size() <= 3
                     ? Status.home(parts.size() == 3 ? parts.get(2) : "") : HELP;
             case "/music" -> music(action, parts);
@@ -174,12 +124,12 @@ final class Commands {
     private static String music(String action, List<String> parts) throws IOException, InterruptedException {
         if (Set.of("downloads", "status").contains(action) && parts.size() <= 2) return Status.downloads();
         if (action.equals("search") && parts.size() == 3) {
-            var results = rows(tool("music_search", Map.of("query", parts.get(2))).path("results"));
+            var results = rows(Music.search(parts.get(2)).path("results"));
             return "Song matches\n" + (results.isEmpty() ? "No matches."
                     : String.join("\n", results.stream().map(Commands::recording).toList()));
         }
         if (action.equals("releases") && parts.size() == 3) {
-            var data = tool("music_artist_releases", Map.of("artist_name", parts.get(2), "limit", 10));
+            var data = Music.releases(parts.get(2), 10);
             var lines = new ArrayList<String>();
             if (data.path("needs_clarification").asBoolean()) {
                 lines.add("Artist needs clarification; nothing downloaded.");
@@ -198,7 +148,7 @@ final class Commands {
             return String.join("\n", lines);
         }
         if (action.equals("request") && parts.size() == 4) {
-            var data = tool("music_request_song", Map.of("title", parts.get(2), "artist", parts.get(3), "submit", true));
+            var data = Music.request(parts.get(2), parts.get(3));
             if (data.path("needs_clarification").asBoolean()) {
                 var lines = new ArrayList<String>();
                 lines.add("No download submitted. Choose a recording/version:");
@@ -251,7 +201,7 @@ final class Commands {
             return "Use a title between 1 and 200 characters.\n\n" + SEERR_HELP;
         var lines = new ArrayList<String>();
         if (!request) {
-            var results = tool("seerr_search", Map.of("query", title)).path("results");
+            var results = Seerr.search(title).path("results");
             if (results.isEmpty()) return "No matching films or shows found.";
             lines.add("Seerr matches");
             for (var row : results) lines.add(filmLabel(row) + " — " + value(row, "type", "unknown"));
@@ -259,9 +209,7 @@ final class Commands {
                     + "TV requests: use Seerr. Existing TV season search: /shows search \"Show Title\" season 6 (can grab downloads).");
             return String.join("\n", lines);
         }
-        var args = Bridge.JSON.createObjectNode().put("title", title).put("media_type", "movie").put("submit", true);
-        args.put("year", year);
-        var result = tool("seerr_request_title", args);
+        var result = Seerr.request(title, year == null ? null : Bridge.JSON.valueToTree(year));
         if (result.path("needs_clarification").asBoolean()) {
             var choices = rows(result.path("choices"));
             var films = choices.stream().filter(r -> r.path("type").asText().equals("movie")).toList();

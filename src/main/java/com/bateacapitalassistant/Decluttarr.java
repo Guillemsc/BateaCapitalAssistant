@@ -1,5 +1,7 @@
 package com.bateacapitalassistant;
 
+import com.bateacapitalassistant.integrations.IntegrationSupport;
+
 import java.io.*;
 import java.nio.file.*;
 import java.time.Duration;
@@ -41,7 +43,7 @@ final class Decluttarr implements Runnable {
         String mode = dryRun == null ? "action reported — mode unknown"
                 : dryRun ? "DRY RUN — no changes" : "action reported";
         return "Decluttarr — " + mode + "\n" + REASONS.getOrDefault(match.group(1), match.group(1))
-                + "\n" + Commands.limit(action, 1500)
+                + "\n" + IntegrationSupport.limit(action, 1500)
                 + "\n\nLog report, not confirmation of success or a replacement download.";
     }
 

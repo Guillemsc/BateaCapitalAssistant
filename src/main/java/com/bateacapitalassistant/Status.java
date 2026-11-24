@@ -5,14 +5,16 @@ import com.fasterxml.jackson.databind.JsonNode;
 import java.io.IOException;
 import java.util.*;
 
-import static com.bateacapitalassistant.Commands.*;
+import com.bateacapitalassistant.integrations.*;
+
+import static com.bateacapitalassistant.integrations.IntegrationSupport.*;
 
 final class Status {
     private Status() {
     }
 
     static String nas() throws IOException, InterruptedException {
-        var data = tool("nas_status", Map.of());
+        var data = NasMetrics.status();
         var memory = data.required("memory");
         var disk = data.required("volume1");
         long hours = data.path("uptime_seconds").asLong() / 3600;
@@ -27,7 +29,7 @@ final class Status {
     }
 
     static String disk() throws IOException, InterruptedException {
-        var data = tool("disk_activity", Map.of());
+        var data = NasMetrics.diskActivity();
         var processes = ProcessDiskIo.sample(java.nio.file.Path.of("/host-proc"));
         var lines = new ArrayList<String>();
         lines.add("Disk activity — " + value(data, "sample_seconds", "2") + "-second sample");
@@ -42,7 +44,7 @@ final class Status {
     }
 
     static String home(String query) throws IOException, InterruptedException {
-        var rows = rows(tool("home_status", Map.of("query", query)).path("entities"));
+        var rows = rows(HomeAssistant.status(query).path("entities"));
         if (rows.isEmpty()) return "No matching Home Assistant entities.";
         var lines = new ArrayList<String>();
         lines.add("Home Assistant status");
@@ -57,7 +59,7 @@ final class Status {
     }
 
     static String transcoding() throws IOException, InterruptedException {
-        var data = tool("tdarr_status", Map.of());
+        var data = Tdarr.status();
         var lines = new ArrayList<String>();
         lines.add("Tdarr status");
         for (var node : data.path("nodes")) {
@@ -81,7 +83,7 @@ final class Status {
     }
 
     static String downloads() throws IOException, InterruptedException {
-        var data = tool("music_status", Map.of());
+        var data = Music.status();
         var lines = new ArrayList<String>();
         lines.add("Downtify: " + value(data, "queue_state", "unknown") + "; " + value(data, "active", "0") + " active");
         if (!data.path("counts").isEmpty()) lines.add(counts(data.path("counts"), " • ", false));
@@ -97,7 +99,7 @@ final class Status {
     }
 
     static String seerr() throws IOException, InterruptedException {
-        var data = tool("seerr_status", Map.of());
+        var data = Seerr.status();
         var counts = data.path("counts");
         var lines = new ArrayList<String>();
         lines.add(format("Seerr: %s requests (%s films, %s shows)", value(counts, "total", "0"),
