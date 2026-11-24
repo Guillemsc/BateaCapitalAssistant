@@ -1,3 +1,5 @@
+[![Test](https://github.com/Guillemsc/BateaCapitalAssistant/actions/workflows/test.yml/badge.svg)](https://github.com/Guillemsc/BateaCapitalAssistant/actions/workflows/test.yml)
+
 # BateaCapitalAssistant
 
 Private Telegram command bot for Sonarr, Radarr, qBittorrent, and the NAS tools service. Built with Java 21 and Maven, following Likearr's executable JAR and two-stage Docker build.
