@@ -1,0 +1,19 @@
+# BateaCapitalAssistant
+
+Private Telegram command bot for Sonarr, Radarr, qBittorrent, and the NAS tools service. Built with Java 21 and Maven, following Likearr's executable JAR and two-stage Docker build.
+
+Build and test with `mvn clean verify`. The executable is `target/bateacapitalassistant-1.0.0.jar`.
+
+For Docker Compose, set `BATEA_SECRETS_HOST` and `BATEA_STATE_HOST` to the existing host directories and run `docker compose up --build -d`. The container uses host networking to reach the NAS tools MCP endpoint at `127.0.0.1:4097`. Sonarr and Radarr use the existing NAS address and ports in `MediaServices.java`.
+
+Mount these existing files under `/secrets`:
+
+| File | Contents |
+| --- | --- |
+| `telegram-bot-token` | Bot token |
+| `telegram-access.json` | JSON object with an `allowed_user_ids` array of numeric Telegram IDs |
+| `nas-tools-token` | Bearer token for the NAS tools service |
+| `sonarr-api-key`, `radarr-api-key` | The respective API keys |
+| `qbittorrent.json` | JSON object with `url`, `username`, and `password` |
+
+Reuse the writable `/state` directory to carry over the Telegram update offset and Decluttarr cursor. Stop the Python bot before starting the Java bot with the same token. For Decluttarr notifications, bind mount the log directory at `/decluttarr-logs` (containing `logs.txt`) and optionally mount the config file at `/decluttarr-config.yaml`. Both mounts can be read-only.

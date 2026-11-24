@@ -1,0 +1,9 @@
+services:
+  bateacapitalassistant:
+    build: .
+    image: bateacapitalassistant:local
+    network_mode: host
+    restart: unless-stopped
+    volumes:
+      - ${BATEA_SECRETS_HOST:?Set BATEA_SECRETS_HOST}:/secrets:ro
+      - ${BATEA_STATE_HOST:?Set BATEA_STATE_HOST}:/state
