@@ -19,3 +19,12 @@ Mount these existing files under `/secrets`:
 | `qbittorrent.json` | JSON object with `url`, `username`, and `password` |
 
 Reuse the writable `/state` directory to carry over the Telegram update offset and Decluttarr cursor. Stop the Python bot before starting the Java bot with the same token. For Decluttarr notifications, bind mount the log directory at `/decluttarr-logs` (containing `logs.txt`) and optionally mount the config file at `/decluttarr-config.yaml`. Both mounts can be read-only.
+
+## Publish for Synology URL import
+
+The manual **Publish image** workflow publishes to GHCR. To publish the same image to Docker Hub as well:
+
+1. Create the `bateacapitalassistant` repository on Docker Hub. Use public visibility if you want Synology to import without credentials.
+2. In the GitHub repository's **Settings → Secrets and variables → Actions**, add the repository variable `DOCKERHUB_USERNAME` with your Docker Hub username and the repository secret `DOCKERHUB_TOKEN` with a Docker Hub access token that can write to the repository.
+3. In **Actions → Publish image → Run workflow**, enable **Also publish to Docker Hub for Synology URL import**. The workflow publishes `latest` and the selected version tag to both registries.
+4. In Synology **Container Manager → Image → Action → Import → Add From URL**, enter `https://hub.docker.com/r/<docker-hub-username>/bateacapitalassistant`.
