@@ -13,10 +13,10 @@ public final class NasMetrics {
     private NasMetrics() {
     }
 
-    private record Disk(long read, long write, long busy, long inFlight) {
+    public record Disk(long read, long write, long busy, long inFlight) {
     }
 
-    private static Map<String, Disk> disks() throws IOException {
+    public static Map<String, Disk> disks() throws IOException {
         Map<String, Disk> result = new TreeMap<>();
         for (String line : Files.readAllLines(METRICS.resolve("diskstats"))) {
             String[] f = line.strip().split("\\s+");
@@ -28,6 +28,17 @@ public final class NasMetrics {
                 throw new IOException("Invalid disk counters", e);
             }
         }
+        return result;
+    }
+
+    public static Map<String, Double> busyPercent(Map<String, Disk> before, Map<String, Disk> after, double seconds) {
+        Map<String, Double> result = new TreeMap<>();
+        if (seconds <= 0) return result;
+        after.forEach((name, current) -> {
+            Disk previous = before.get(name);
+            if (previous == null || current.busy() < previous.busy()) return;
+            result.put(name, Math.min(100, (current.busy() - previous.busy()) / (seconds * 10)));
+        });
         return result;
     }
 

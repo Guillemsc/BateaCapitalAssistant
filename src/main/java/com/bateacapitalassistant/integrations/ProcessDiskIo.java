@@ -17,10 +17,10 @@ public final class ProcessDiskIo {
     private ProcessDiskIo() {
     }
 
-    record Counters(String name, String startTime, long readBytes, long writeBytes) {
+    public record Counters(String name, String startTime, long readBytes, long writeBytes) {
     }
 
-    record Snapshot(Map<String, Counters> processes, int inaccessible) {
+    public record Snapshot(Map<String, Counters> processes, int inaccessible) {
     }
 
     record Rate(String pid, String name, double readBytes, double writeBytes) {
@@ -39,7 +39,7 @@ public final class ProcessDiskIo {
         }
     }
 
-    static Snapshot read(Path proc) throws IOException {
+    public static Snapshot read(Path proc) throws IOException {
         Map<String, Counters> processes = new HashMap<>();
         int inaccessible = 0;
         try (var entries = Files.list(proc)) {
@@ -69,7 +69,7 @@ public final class ProcessDiskIo {
         return new Snapshot(Map.copyOf(processes), inaccessible);
     }
 
-    static List<String> format(Snapshot before, Snapshot after, double seconds) {
+    public static List<String> format(Snapshot before, Snapshot after, double seconds) {
         var rates = new ArrayList<Rate>();
         after.processes().forEach((pid, current) -> {
             Counters previous = before.processes().get(pid);
@@ -81,7 +81,7 @@ public final class ProcessDiskIo {
         });
         rates.sort(Comparator.comparingDouble((Rate rate) -> rate.readBytes() + rate.writeBytes()).reversed());
         var lines = new ArrayList<String>();
-        lines.add("\nProcesses by disk I/O — two-second sample");
+        lines.add("\nProcesses by disk I/O — " + Math.round(seconds) + "-second sample");
         for (Rate rate : rates.stream().limit(MAX_PROCESSES).toList()) {
             String name = IntegrationSupport.limit(rate.name().replaceAll("[\\p{Cntrl}]", " "), 100);
             lines.add("• " + name + " (PID " + rate.pid() + "): read "

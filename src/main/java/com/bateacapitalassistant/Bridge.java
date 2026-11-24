@@ -187,6 +187,9 @@ public final class Bridge {
         Thread notifications = new Thread(new Decluttarr(allowed, this::send), "decluttarr-notifications");
         notifications.setDaemon(true);
         notifications.start();
+        Thread diskWatchdog = new Thread(new DiskWatchdog(Path.of("/state/disk-watchdog.json"), allowed, this::send), "disk-watchdog");
+        diskWatchdog.setDaemon(true);
+        diskWatchdog.start();
         try {
             refresh();
         } catch (IOException | RuntimeException e) {
