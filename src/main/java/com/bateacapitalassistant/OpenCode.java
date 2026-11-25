@@ -92,11 +92,22 @@ final class OpenCode {
                     ("opencode:" + password).getBytes(StandardCharsets.UTF_8));
             request.header("Authorization", "Basic " + credentials);
         }
-        var response = http.send(request.build(), HttpResponse.BodyHandlers.ofString());
-        if (response.statusCode() / 100 != 2) throw new IOException("OpenCode HTTP " + response.statusCode());
+        String endpoint = path.replaceAll("ses_[a-zA-Z0-9]+", "{session}");
+        HttpResponse<String> response;
+        try {
+            response = http.send(request.build(), HttpResponse.BodyHandlers.ofString());
+        } catch (IOException e) {
+            throw new IOException("OpenCode " + endpoint + ": " + e.getClass().getSimpleName(), e);
+        }
+        if (response.statusCode() / 100 != 2) throw new IOException("OpenCode " + endpoint + ": HTTP " + response.statusCode());
         if (response.statusCode() == 204) return NullNode.getInstance();
-        var json = Bridge.JSON.readTree(response.body());
-        if (json == null || json.isMissingNode()) throw new IOException("Empty OpenCode API response");
+        JsonNode json;
+        try {
+            json = Bridge.JSON.readTree(response.body());
+        } catch (com.fasterxml.jackson.core.JsonProcessingException e) {
+            throw new IOException("OpenCode " + endpoint + ": invalid JSON response", e);
+        }
+        if (json == null || json.isMissingNode()) throw new IOException("OpenCode " + endpoint + ": empty response");
         return json;
     }
 }
