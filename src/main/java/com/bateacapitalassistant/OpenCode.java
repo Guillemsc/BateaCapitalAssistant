@@ -17,7 +17,11 @@ import java.util.concurrent.ConcurrentHashMap;
 final class OpenCode {
     private static final String URL = System.getenv("BATEA_OPENCODE_URL");
     private static final Duration REQUEST_TIMEOUT = Duration.ofSeconds(10);
-    private final Map<Long, String> sessions = new ConcurrentHashMap<>();
+    private static final long SESSION_IDLE_NANOS = Duration.ofMinutes(30).toNanos();
+
+    private record Session(String id, long lastInteraction) {}
+
+    private final Map<Long, Session> sessions = new ConcurrentHashMap<>();
     private final HttpClient http = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(5)).build();
 
     static boolean enabled() {
@@ -25,20 +29,25 @@ final class OpenCode {
     }
 
     String reply(long user, String prompt) throws IOException, InterruptedException {
-        String session = sessions.get(user);
-        if (session == null) {
+        long now = System.nanoTime();
+        Session previous = sessions.get(user);
+        String session;
+        if (previous == null || now - previous.lastInteraction() >= SESSION_IDLE_NANOS) {
             session = request("/api/session", Map.of("title", "Telegram"), REQUEST_TIMEOUT)
                     .path("data").path("id").asText();
             if (!session.matches("ses_[a-zA-Z0-9]+")) throw new IOException("Invalid OpenCode session ID");
-            sessions.put(user, session);
+        } else {
+            session = previous.id();
         }
+        Session current = new Session(session, now);
+        sessions.put(user, current);
 
         String path = "/api/session/" + session;
         request(path + "/prompt", Map.of("text", prompt, "agent", "telegram"), REQUEST_TIMEOUT);
         try {
             request("/api/experimental/session/" + session + "/wait", Map.of(), Duration.ofMinutes(3));
         } catch (IOException e) {
-            sessions.remove(user, session);
+            sessions.remove(user, current);
             try {
                 request(path + "/interrupt", Map.of(), REQUEST_TIMEOUT);
             } catch (IOException interruptFailure) {
