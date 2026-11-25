@@ -10,6 +10,16 @@ class CommandsTest {
     private final Commands commands = new Commands(() -> fail("Unexpected menu change"));
 
     @Test
+    void rejectsRedundantStatusVariantsWithoutCallingServices() throws Exception {
+        for (String command : List.of("/disk", "/nas", "/seerr", "/music", "/films", "/qbittorrent", "/transcoding")) {
+            assertEquals(Commands.help(command), commands.run(command, command + " status"));
+        }
+        assertEquals(Commands.help("/disk"), commands.run("/disk", "/disk activity"));
+        assertEquals(Commands.help("/disk"), commands.run("/disk", "/disk blabla"));
+        assertEquals(Commands.help("/music"), commands.run("/music", "/music downloads"));
+    }
+
+    @Test
     void helpIsFocusedAndNeverContactsServices() throws Exception {
         for (String name : Commands.SUPPORTED) {
             String help = commands.run(name, name + " help");
@@ -18,7 +28,7 @@ class CommandsTest {
         }
         assertEquals(Commands.help("/shows"), commands.run("/sonarr", "/sonarr help"));
         assertEquals(Commands.help("/music"), commands.run("/music", "/music invalid"));
-        assertEquals(Commands.help("/home"), commands.run("/home", "/home toggle"));
+        assertEquals(Commands.help("/home"), commands.run("/home", "/home status"));
     }
 
     @Test
@@ -41,8 +51,10 @@ class CommandsTest {
     void canonicalizesAliasesAndKeepsRefreshActionsReadOnly() {
         assertEquals("/seerr", Commands.canonical("/Seer@MyBot"));
         assertEquals("/shows", Commands.canonical("/Sonarr"));
-        assertTrue(Commands.isRefreshableStatus("/disk", "/disk activity"));
-        assertTrue(Commands.isRefreshableStatus("/music", "/music downloads"));
+        assertTrue(Commands.isRefreshableStatus("/disk", "/disk"));
+        assertFalse(Commands.isRefreshableStatus("/disk", "/disk activity"));
+        assertTrue(Commands.isRefreshableStatus("/music", "/music"));
+        assertFalse(Commands.isRefreshableStatus("/music", "/music downloads"));
         assertFalse(Commands.isRefreshableStatus("/music", "/music request Song Artist"));
         assertFalse(Commands.isRefreshableStatus("/seerr", "/seerr search Arrival"));
         assertFalse(Commands.isRefreshableStatus("/home", "/home status Living Room"));

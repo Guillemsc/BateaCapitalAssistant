@@ -10,30 +10,30 @@ import java.util.*;
 import java.util.regex.Pattern;
 
 final class Commands {
-    static final Set<String> SUPPORTED = Set.of("/nas", "/disk", "/transcoding", "/seerr", "/downloads",
+    static final Set<String> SUPPORTED = Set.of("/nas", "/disk", "/transcoding", "/seerr",
             "/music", "/home", "/shows", "/films", "/qbittorrent", "/refresh");
     static final String HELP = """
             Commands
 
-            /shows status — episode downloads and import issues
+            /shows — episode downloads and import issues
             /shows search "Show Title" season 6 — search and grab missing episodes
-            /films [status] — film downloads and import issues
-            /qbittorrent [status] — torrent states and speeds
+            /films — film downloads and import issues
+            /qbittorrent — torrent states and speeds
             /refresh — update Telegram command menu
-            /nas [status]
-            /disk [activity|status]
-            /transcoding [status]
+            /nas
+            /disk
+            /transcoding
             /seerr help
-            /music downloads — Downtify music queue and progress
+            /music — Downtify music queue and progress
             /music search "Title or artist"
             /music request "Song title" "Artist"
             /music releases "Artist"
-            /home status [Area or device name]
+            /home [Area or device name]
 
             Requests submit only on a unique validated match. Ambiguous matches require clarification. Album downloads and direct home controls are not supported.""";
     private static final String SEERR_HELP = """
             Seerr commands
-            /seerr status
+            /seerr
             /seerr search "Film Name"
             /seerr request "Film Name" 2016
 
@@ -56,7 +56,7 @@ final class Commands {
             case "/seerr" -> SEERR_HELP;
             case "/music" -> """
                     Music commands
-                    /music downloads
+                    /music
                     /music search Title or artist
                     /music releases Artist name
                     /music request "Song title" "Artist"
@@ -65,14 +65,14 @@ final class Commands {
                     """.strip();
             case "/shows" -> """
                     Show commands
-                    /shows status
+                    /shows
                     /shows search "Show Title" season 6
 
                     Searches can automatically grab releases for aired, monitored missing episodes.
                     """.strip();
-            case "/home" -> "/home status [Area or device name]";
-            case "/disk" -> "/disk [activity|status] — disk rates and busiest readable processes";
-            case "/films", "/qbittorrent", "/nas", "/transcoding", "/downloads" -> name + " [status]";
+            case "/home" -> "/home [Area or device name]";
+            case "/disk" -> "/disk — disk rates and busiest readable processes";
+            case "/films", "/qbittorrent", "/nas", "/transcoding" -> name;
             case "/refresh" -> "/refresh — update the Telegram command menu";
             default -> HELP;
         };
@@ -81,10 +81,7 @@ final class Commands {
     static boolean isRefreshableStatus(String command, String input) {
         try {
             List<String> parts = split(input);
-            if (parts.isEmpty() || parts.size() > 2) return false;
-            String action = parts.size() == 1 ? "status" : parts.get(1).toLowerCase(Locale.ROOT);
-            return action.equals("status") || command.equals("/disk") && action.equals("activity")
-                    || command.equals("/music") && action.equals("downloads");
+            return parts.size() == 1 && SUPPORTED.contains(command) && !command.equals("/refresh");
         } catch (IllegalArgumentException e) {
             return false;
         }
@@ -145,7 +142,7 @@ final class Commands {
         if (parts.isEmpty()) return help(command);
         String action = parts.size() > 1 ? parts.get(1).toLowerCase(Locale.ROOT) : "status";
         if (action.equals("help") && parts.size() == 2) return help(command);
-        boolean status = action.equals("status") && parts.size() <= 2;
+        boolean status = parts.size() == 1;
         return switch (command) {
             case "/refresh" -> {
                 if (parts.size() != 1) yield help(command);
@@ -157,12 +154,10 @@ final class Commands {
             case "/films" -> status ? MediaServices.queue(false) : help(command);
             case "/qbittorrent" -> status ? MediaServices.torrents() : help(command);
             case "/transcoding" -> status ? Status.transcoding() : help(command);
-            case "/downloads" -> status ? Status.downloads() : help(command);
             case "/nas" -> status ? Status.nas() : help(command);
-            case "/disk" -> parts.size() <= 2 && Set.of("status", "activity").contains(action)
-                    ? Status.disk() : help(command);
-            case "/home" -> action.equals("status")
-                    ? Status.home(String.join(" ", parts.subList(Math.min(2, parts.size()), parts.size()))) : help(command);
+            case "/disk" -> status ? Status.disk() : help(command);
+            case "/home" -> action.equals("status") && !status ? help(command)
+                    : Status.home(String.join(" ", parts.subList(1, parts.size())));
             case "/music" -> music(action, parts);
             case "/seerr" -> status ? Status.seerr() : seerr(action, parts);
             default -> HELP;
@@ -176,7 +171,7 @@ final class Commands {
     }
 
     private static String music(String action, List<String> parts) throws IOException, InterruptedException {
-        if (Set.of("downloads", "status").contains(action) && parts.size() <= 2) return Status.downloads();
+        if (parts.size() == 1) return Status.downloads();
         if (action.equals("search") && parts.size() >= 3) {
             String query = String.join(" ", parts.subList(2, parts.size())).strip();
             if (query.isEmpty() || Bridge.length(query) > 200)
@@ -221,7 +216,7 @@ final class Commands {
             }
             if (data.path("submitted").asBoolean())
                 return "Submitted to Downtify: " + value(data, "title", parts.get(2))
-                        + "\nUse /music downloads for progress. Not necessarily completed yet.";
+                        + "\nUse /music for progress. Not necessarily completed yet.";
             return reason(data, "No new download submitted.");
         }
         return help("/music");

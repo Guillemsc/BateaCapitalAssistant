@@ -31,7 +31,7 @@ public final class Bridge {
             menu("films", "Film downloads and import issues (Radarr)"),
             menu("qbittorrent", "Torrent states, speeds and blocked downloads"),
             menu("transcoding", "Transcoding workers and queues (Tdarr)"),
-            menu("nas", "NAS status"), menu("disk", "Disk activity: /disk activity"),
+            menu("nas", "NAS status"), menu("disk", "Disk activity: /disk"),
             menu("seerr", "Media requests and search"), menu("music", "Music search and downloads"),
             menu("home", "Home Assistant status"), menu("refresh", "Refresh Telegram command menu"),
             menu("help", "Show commands and examples"));
@@ -145,7 +145,7 @@ public final class Bridge {
                 boolean submission = Set.of("/seerr", "/music").contains(command)
                         && words.length > 1 && words[1].equalsIgnoreCase("request");
                 send(id, submission
-                        ? "Could not confirm the request outcome. Check /seerr status or /music downloads before retrying to avoid duplicates."
+                        ? "Could not confirm the request outcome. Check /seerr or /music before retrying to avoid duplicates."
                         : "Could not read " + command + " status. Try again shortly. Use " + command + " help for examples.");
                 return;
             }

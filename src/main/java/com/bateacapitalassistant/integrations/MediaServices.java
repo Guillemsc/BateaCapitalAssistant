@@ -66,7 +66,7 @@ public final class MediaServices {
     }
 
     public static String searchSeason(List<String> parts) throws IOException, InterruptedException {
-        String usage = "Use /shows status or /shows search \"Exact Show Title\" season 6. Search can automatically grab releases.";
+        String usage = "Use /shows or /shows search \"Exact Show Title\" season 6. Search can automatically grab releases.";
         int count = parts.size();
         if (count < 5 || !parts.get(1).equalsIgnoreCase("search") || !parts.get(count - 2).equalsIgnoreCase("season")
                 || !parts.getLast().matches("\\p{Nd}+")) return usage;
@@ -101,13 +101,13 @@ public final class MediaServices {
         for (var row : queued.path("records"))
             if ((row.hasNonNull("episodeId") && missing.contains(row.path("episodeId").longValue()))
                     || (row.path("seriesId").longValue() == id && row.path("seasonNumber").asInt() == season))
-                return "This season already has queue entries. Check /shows status and resolve/blocklist suspicious or blocked downloads before searching again.";
+                return "This season already has queue entries. Check /shows and resolve/blocklist suspicious or blocked downloads before searching again.";
         try {
             arr(true, "command", Map.of("name", "EpisodeSearch", "episodeIds", missing));
         } catch (IOException | RuntimeException e) {
             return "Search submission outcome uncertain. Check Sonarr tasks/queue before retrying.";
         }
-        return format("Search submitted for %s season %d: %d missing episodes. Sonarr may automatically grab eligible releases. Use /shows status for progress.",
+        return format("Search submitted for %s season %d: %d missing episodes. Sonarr may automatically grab eligible releases. Use /shows for progress.",
                 show.path("title").asText(), season, missing.size());
     }
 
