@@ -36,6 +36,7 @@ public final class Bridge {
             menu("home", "Home Assistant status"), menu("refresh", "Refresh Telegram command menu"),
             menu("help", "Show commands and examples"));
 
+    private final OpenCode openCode = new OpenCode();
     private final String token;
     private final Set<Long> allowed;
     private final Commands commands = new Commands(this::refresh);
@@ -155,7 +156,8 @@ public final class Bridge {
         } else if (command.equals("/help")) send(id, words.length == 2 ? Commands.help(words[1]) : Commands.HELP);
         else if (command.equals("/start")) send(id, Commands.HELP);
         else if (input.equals("/new")) send(id, "No reset is needed. Use /help for commands.");
-        else send(id, "Send /help for available commands.");
+        else if (input.startsWith("/") || !OpenCode.enabled()) send(id, "Send /help for available commands.");
+        else send(id, openCode.reply(id, input));
     }
 
     private void handleCallback(JsonNode callback) throws IOException, InterruptedException {
@@ -189,6 +191,7 @@ public final class Bridge {
         Thread notifications = new Thread(new Decluttarr(allowed, this::send), "decluttarr-notifications");
         notifications.setDaemon(true);
         notifications.start();
+        BotMcp.startHttp();
         Thread diskWatchdog = new Thread(new DiskWatchdog(Path.of("/state/disk-watchdog.json"), allowed, this::send), "disk-watchdog");
         diskWatchdog.setDaemon(true);
         diskWatchdog.start();
