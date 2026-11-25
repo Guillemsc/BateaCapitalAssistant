@@ -9,6 +9,7 @@ services:
       - ${BATEA_SECRETS_HOST:?Set BATEA_SECRETS_HOST}:/secrets:ro
       - ${BATEA_STATE_HOST:?Set BATEA_STATE_HOST}:/state
       - /proc:/host-proc:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
       - /proc/loadavg:/host-metrics/loadavg:ro
       - /proc/uptime:/host-metrics/uptime:ro
       - /proc/diskstats:/host-metrics/diskstats:ro

@@ -87,9 +87,10 @@ public final class ProcessDiskIo {
         rates.sort(Comparator.comparingDouble((Rate rate) -> rate.readBytes() + rate.writeBytes()).reversed());
         var lines = new ArrayList<String>();
         lines.add("\nProcesses by disk I/O — " + Math.round(seconds) + "-second sample");
+        Map<String, String> containerNames = rates.isEmpty() ? Map.of() : ContainerNames.read();
         for (Rate rate : rates.stream().limit(MAX_PROCESSES).toList()) {
             String name = IntegrationSupport.limit(rate.name().replaceAll("[\\p{Cntrl}]", " "), 100);
-            String hint = applicationHint(Path.of("/host-proc"), rate.pid(), after.processes().get(rate.pid()).startTime(), name);
+            String hint = applicationHint(Path.of("/host-proc"), rate.pid(), after.processes().get(rate.pid()).startTime(), name, containerNames);
             lines.add("• " + name + hint + " (PID " + rate.pid() + "): read "
                     + IntegrationSupport.size(IntegrationSupport.JSON.getNodeFactory().numberNode(rate.readBytes())) + "/s; write "
                     + IntegrationSupport.size(IntegrationSupport.JSON.getNodeFactory().numberNode(rate.writeBytes())) + "/s");
@@ -101,6 +102,10 @@ public final class ProcessDiskIo {
     }
 
     static String applicationHint(Path proc, String pid, String expectedStart, String processName) {
+        return applicationHint(proc, pid, expectedStart, processName, Map.of());
+    }
+
+    static String applicationHint(Path proc, String pid, String expectedStart, String processName, Map<String, String> containerNames) {
         Path entry = proc.resolve(pid);
         try {
             if (!expectedStart.equals(startTime(Files.readString(entry.resolve("stat"))))) return "";
@@ -113,7 +118,10 @@ public final class ProcessDiskIo {
             String container = "";
             try {
                 var match = CONTAINER_ID.matcher(Files.readString(entry.resolve("cgroup")));
-                if (match.find()) container = match.group(1).substring(0, 12);
+                if (match.find()) {
+                    String id = match.group(1);
+                    container = containerNames.getOrDefault(id, id.substring(0, 12));
+                }
             } catch (IOException | SecurityException ignored) {
                 // The process may not have a readable cgroup.
             }

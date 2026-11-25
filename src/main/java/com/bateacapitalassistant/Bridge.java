@@ -24,9 +24,8 @@ public final class Bridge {
     private static final Duration POLL_RETRY_DELAY = Duration.ofSeconds(10);
     private static final Pattern WHITESPACE = Pattern.compile("\\s+", Pattern.UNICODE_CHARACTER_CLASS);
     private static final Path STATE = Path.of("/state/bridge.json");
-    static final Set<String> REFRESHABLE = Set.of("/shows", "/films", "/qbittorrent", "/transcoding");
-    static final Map<String, String> ALIASES = Map.of("/sonarr", "/shows", "/sonar", "/shows",
-            "/radarr", "/films", "/tdarr", "/transcoding", "/seer", "/seerr");
+    static final Set<String> REFRESHABLE = Commands.SUPPORTED.stream()
+            .filter(command -> !command.equals("/refresh")).collect(java.util.stream.Collectors.toUnmodifiableSet());
     static final List<Map<String, String>> MENU = List.of(
             menu("shows", "Show downloads and import issues (Sonarr)"),
             menu("films", "Film downloads and import issues (Radarr)"),
@@ -131,9 +130,12 @@ public final class Bridge {
         String input = message.path("text").asText("").strip();
         if (input.isEmpty()) return;
         long id = chat.path("id").longValue();
+        if (length(input) > MAX_INPUT_LENGTH) {
+            send(id, "Please keep messages below 8,000 characters.");
+            return;
+        }
         String[] words = WHITESPACE.split(input);
-        String command = words[0].split("@", 2)[0].toLowerCase(Locale.ROOT);
-        command = ALIASES.getOrDefault(command, command);
+        String command = Commands.canonical(words[0]);
         if (Commands.SUPPORTED.contains(command)) {
             String result;
             try {
@@ -144,15 +146,15 @@ public final class Bridge {
                         && words.length > 1 && words[1].equalsIgnoreCase("request");
                 send(id, submission
                         ? "Could not confirm the request outcome. Check /seerr status or /music downloads before retrying to avoid duplicates."
-                        : "Could not read that service’s status. Please try again or check the service.");
+                        : "Could not read " + command + " status. Try again shortly. Use " + command + " help for examples.");
                 return;
             }
-            if (REFRESHABLE.contains(command) && (words.length == 1
-                    || (words.length == 2 && words[1].equalsIgnoreCase("status")))) sendStatus(id, result, command);
+            if (REFRESHABLE.contains(command) && Commands.isRefreshableStatus(command, input))
+                sendStatus(id, result, command);
             else send(id, result);
-        } else if (command.equals("/start") || command.equals("/help")) send(id, Commands.HELP);
+        } else if (command.equals("/help")) send(id, words.length == 2 ? Commands.help(words[1]) : Commands.HELP);
+        else if (command.equals("/start")) send(id, Commands.HELP);
         else if (input.equals("/new")) send(id, "No reset is needed. Use /help for commands.");
-        else if (length(input) > MAX_INPUT_LENGTH) send(id, "Please keep messages below 8,000 characters.");
         else send(id, "Send /help for available commands.");
     }
 

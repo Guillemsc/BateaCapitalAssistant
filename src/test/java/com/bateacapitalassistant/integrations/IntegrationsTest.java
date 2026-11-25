@@ -11,6 +11,40 @@ import static org.junit.jupiter.api.Assertions.*;
 
 class IntegrationsTest {
     @Test
+    void resolvesContainerNamesFromDockerResponse() throws Exception {
+        String id = "a50914636f6d21de440daf36c0dd3ae6c90b393447530c57c9f607f7c8e18621";
+        String json = "[{\"Id\":\"" + id + "\",\"Names\":[\"/homeassistant-homeassistant-1\"]}]";
+        byte[] bytes = json.getBytes(StandardCharsets.UTF_8);
+        String headers = "HTTP/1.1 200 OK\r\nContent-Length: " + bytes.length + "\r\n\r\n";
+        var input = new java.io.ByteArrayInputStream((headers + json).getBytes(StandardCharsets.UTF_8));
+        var names = ContainerNames.parseResponse(input);
+        assertEquals("homeassistant-homeassistant-1", names.get(id));
+        Path proc = Files.createTempDirectory("process-fixture");
+        try {
+            Path process = Files.createDirectory(proc.resolve("42"));
+            Files.writeString(process.resolve("stat"), "42 (python3) S " + "0 ".repeat(18) + "9876 0");
+            Files.writeString(process.resolve("cgroup"), "8:cpu:/docker/" + id + "\n");
+            assertEquals(" [container homeassistant-homeassistant-1]",
+                    ProcessDiskIo.applicationHint(proc, "42", "9876", "python3", names));
+        } finally {
+            try (var paths = Files.walk(proc)) {
+                for (Path path : paths.sorted(java.util.Comparator.reverseOrder()).toList()) Files.delete(path);
+            }
+        }
+    }
+
+    @Test
+    void readsChunkedDockerResponsesAndRejectsInvalidNames() throws Exception {
+        String id = "a".repeat(64);
+        String json = "[{\"Id\":\"" + id + "\",\"Names\":[\"/valid-name\"]}]";
+        String response = "HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n"
+                + Integer.toHexString(json.getBytes(StandardCharsets.UTF_8).length) + "\r\n" + json + "\r\n0\r\n\r\n";
+        assertEquals("valid-name", ContainerNames.parseResponse(new java.io.ByteArrayInputStream(response.getBytes(StandardCharsets.UTF_8))).get(id));
+        assertTrue(ContainerNames.parseNames(IntegrationSupport.JSON.readTree("[{\"Id\":\"" + id
+                + "\",\"Names\":[\"/unsafe name\"]}]")).isEmpty());
+    }
+
+    @Test
     void identifiesScriptAndContainerWithoutExposingArguments(@TempDir Path proc) throws Exception {
         Path process = Files.createDirectory(proc.resolve("123"));
         String stat = "123 (deno) S " + "0 ".repeat(18) + "9876 0";

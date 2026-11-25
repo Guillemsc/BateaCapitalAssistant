@@ -14,30 +14,81 @@ final class Commands {
             "/music", "/home", "/shows", "/films", "/qbittorrent", "/refresh");
     static final String HELP = """
             Commands
-            
+
             /shows status — episode downloads and import issues
             /shows search "Show Title" season 6 — search and grab missing episodes
             /films [status] — film downloads and import issues
             /qbittorrent [status] — torrent states and speeds
             /refresh — update Telegram command menu
             /nas [status]
-            /disk activity
+            /disk [activity|status]
             /transcoding [status]
             /seerr help
             /music downloads — Downtify music queue and progress
             /music search "Title or artist"
             /music request "Song title" "Artist"
             /music releases "Artist"
-            /home status ["Area or device name"]
-            
+            /home status [Area or device name]
+
             Requests submit only on a unique validated match. Ambiguous matches require clarification. Album downloads and direct home controls are not supported.""";
     private static final String SEERR_HELP = """
             Seerr commands
             /seerr status
             /seerr search "Film Name"
             /seerr request "Film Name" 2016
-            
+
             Year is optional. Requests submit immediately only if the title resolves uniquely; ambiguous titles return choices. Film requests only; manage show requests and seasons in Seerr.""";
+
+    static String canonical(String command) {
+        String name = command.split("@", 2)[0].toLowerCase(Locale.ROOT);
+        return switch (name) {
+            case "/sonarr", "/sonar" -> "/shows";
+            case "/radarr" -> "/films";
+            case "/tdarr" -> "/transcoding";
+            case "/seer" -> "/seerr";
+            default -> name;
+        };
+    }
+
+    static String help(String command) {
+        String name = canonical(command.startsWith("/") ? command : "/" + command);
+        return switch (name) {
+            case "/seerr" -> SEERR_HELP;
+            case "/music" -> """
+                    Music commands
+                    /music downloads
+                    /music search Title or artist
+                    /music releases Artist name
+                    /music request "Song title" "Artist"
+
+                    Requests can start downloads. Use quotes to separate the song title and artist.
+                    """.strip();
+            case "/shows" -> """
+                    Show commands
+                    /shows status
+                    /shows search "Show Title" season 6
+
+                    Searches can automatically grab releases for aired, monitored missing episodes.
+                    """.strip();
+            case "/home" -> "/home status [Area or device name]";
+            case "/disk" -> "/disk [activity|status] — disk rates and busiest readable processes";
+            case "/films", "/qbittorrent", "/nas", "/transcoding", "/downloads" -> name + " [status]";
+            case "/refresh" -> "/refresh — update the Telegram command menu";
+            default -> HELP;
+        };
+    }
+
+    static boolean isRefreshableStatus(String command, String input) {
+        try {
+            List<String> parts = split(input);
+            if (parts.isEmpty() || parts.size() > 2) return false;
+            String action = parts.size() == 1 ? "status" : parts.get(1).toLowerCase(Locale.ROOT);
+            return action.equals("status") || command.equals("/disk") && action.equals("activity")
+                    || command.equals("/music") && action.equals("downloads");
+        } catch (IllegalArgumentException e) {
+            return false;
+        }
+    }
 
     interface Refresh {
         void run() throws IOException, InterruptedException;
@@ -50,6 +101,7 @@ final class Commands {
     }
 
     static List<String> split(String text) {
+        text = text.replace('“', '"').replace('”', '"').replace('‘', '\'').replace('’', '\'');
         var parts = new ArrayList<String>();
         var word = new StringBuilder();
         char quote = 0;
@@ -65,7 +117,7 @@ final class Commands {
             } else if (quote != 0) {
                 if (ch == quote) quote = 0;
                 else word.append(ch);
-            } else if (ch == '"' || ch == '\'') {
+            } else if ((ch == '"' || ch == '\'') && !started) {
                 quote = ch;
                 started = true;
             } else if (" \t\r\n".indexOf(ch) >= 0) {
@@ -83,32 +135,34 @@ final class Commands {
     }
 
     String run(String command, String input) throws IOException, InterruptedException {
+        command = canonical(command);
         List<String> parts;
         try {
             parts = split(input);
         } catch (IllegalArgumentException e) {
-            return "Unmatched quotation marks.\n\n" + (command.equals("/seerr") ? SEERR_HELP : HELP);
+            return "Check the quotation marks or trailing backslash.\n\n" + help(command);
         }
+        if (parts.isEmpty()) return help(command);
         String action = parts.size() > 1 ? parts.get(1).toLowerCase(Locale.ROOT) : "status";
+        if (action.equals("help") && parts.size() == 2) return help(command);
         boolean status = action.equals("status") && parts.size() <= 2;
         return switch (command) {
             case "/refresh" -> {
-                if (parts.size() != 1) yield HELP;
+                if (parts.size() != 1) yield help(command);
                 refresh.run();
                 yield "Telegram command menu refreshed.\n\n" + HELP;
             }
             case "/shows" -> status ? MediaServices.queue(true)
-                    : action.equals("help") ? HELP : MediaServices.searchSeason(parts);
-            case "/films" -> status ? MediaServices.queue(false) : HELP;
-            case "/qbittorrent" -> status ? MediaServices.torrents() : HELP;
-            case "/transcoding" -> status ? Status.transcoding() : HELP;
-            case "/downloads" -> status ? Status.downloads() : HELP;
-            case "/nas" -> status ? Status.nas() : HELP;
-            case "/disk" ->
-                    action.equals("help") ? HELP : parts.size() <= 2 && Set.of("status", "activity").contains(action)
-                            ? Status.disk() : "Use /disk activity for a two-second physical-disk sample.";
-            case "/home" -> action.equals("status") && parts.size() <= 3
-                    ? Status.home(parts.size() == 3 ? parts.get(2) : "") : HELP;
+                    : MediaServices.searchSeason(parts);
+            case "/films" -> status ? MediaServices.queue(false) : help(command);
+            case "/qbittorrent" -> status ? MediaServices.torrents() : help(command);
+            case "/transcoding" -> status ? Status.transcoding() : help(command);
+            case "/downloads" -> status ? Status.downloads() : help(command);
+            case "/nas" -> status ? Status.nas() : help(command);
+            case "/disk" -> parts.size() <= 2 && Set.of("status", "activity").contains(action)
+                    ? Status.disk() : help(command);
+            case "/home" -> action.equals("status")
+                    ? Status.home(String.join(" ", parts.subList(Math.min(2, parts.size()), parts.size()))) : help(command);
             case "/music" -> music(action, parts);
             case "/seerr" -> status ? Status.seerr() : seerr(action, parts);
             default -> HELP;
@@ -123,13 +177,19 @@ final class Commands {
 
     private static String music(String action, List<String> parts) throws IOException, InterruptedException {
         if (Set.of("downloads", "status").contains(action) && parts.size() <= 2) return Status.downloads();
-        if (action.equals("search") && parts.size() == 3) {
-            var results = rows(Music.search(parts.get(2)).path("results"));
+        if (action.equals("search") && parts.size() >= 3) {
+            String query = String.join(" ", parts.subList(2, parts.size())).strip();
+            if (query.isEmpty() || Bridge.length(query) > 200)
+                return "Use a query between 1 and 200 characters.\n\n" + help("/music");
+            var results = rows(Music.search(query).path("results"));
             return "Song matches\n" + (results.isEmpty() ? "No matches."
                     : String.join("\n", results.stream().map(Commands::recording).toList()));
         }
-        if (action.equals("releases") && parts.size() == 3) {
-            var data = Music.releases(parts.get(2), 10);
+        if (action.equals("releases") && parts.size() >= 3) {
+            String artist = String.join(" ", parts.subList(2, parts.size())).strip();
+            if (artist.isEmpty() || Bridge.length(artist) > 200)
+                return "Use an artist name between 1 and 200 characters.\n\n" + help("/music");
+            var data = Music.releases(artist, 10);
             var lines = new ArrayList<String>();
             if (data.path("needs_clarification").asBoolean()) {
                 lines.add("Artist needs clarification; nothing downloaded.");
@@ -148,6 +208,9 @@ final class Commands {
             return String.join("\n", lines);
         }
         if (action.equals("request") && parts.size() == 4) {
+            if (parts.get(2).isBlank() || parts.get(3).isBlank()
+                    || Bridge.length(parts.get(2)) > 90 || Bridge.length(parts.get(3)) > 90)
+                return "Use a title and artist between 1 and 90 characters each.\n\n" + help("/music");
             var data = Music.request(parts.get(2), parts.get(3));
             if (data.path("needs_clarification").asBoolean()) {
                 var lines = new ArrayList<String>();
@@ -161,7 +224,7 @@ final class Commands {
                         + "\nUse /music downloads for progress. Not necessarily completed yet.";
             return reason(data, "No new download submitted.");
         }
-        return HELP;
+        return help("/music");
     }
 
     static String reason(JsonNode data, String fallback) {
