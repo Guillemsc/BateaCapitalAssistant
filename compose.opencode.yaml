@@ -1,13 +1,29 @@
 services:
   bateacapitalassistant:
+    image: guillemsc/bateacapitalassistant:latest
+    pull_policy: always
+    restart: unless-stopped
     container_name: bateacapitalassistant
     network_mode: host
     environment:
       BATEA_OPENCODE_URL: http://127.0.0.1:4196
       BATEA_MCP_TOKEN: ${BATEA_MCP_TOKEN:?Required}
       OPENCODE_SERVER_PASSWORD: ${OPENCODE_SERVER_PASSWORD:?Required}
+    cap_add:
+      - SYS_PTRACE
+    volumes:
+      - ${BATEA_SECRETS_HOST:?Set BATEA_SECRETS_HOST}:/secrets:ro
+      - ${BATEA_STATE_HOST:?Set BATEA_STATE_HOST}:/state
+      - /proc:/host-proc:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /proc/loadavg:/host-metrics/loadavg:ro
+      - /proc/uptime:/host-metrics/uptime:ro
+      - /proc/diskstats:/host-metrics/diskstats:ro
+      - /proc/stat:/host-metrics/stat:ro
+      - /proc/meminfo:/host-metrics/meminfo:ro
+      - ${BATEA_VOLUME_HOST:?Set BATEA_VOLUME_HOST}:/host-volume1:ro
   opencode:
-    image: ghcr.io/anomalyco/opencode:1.2.15
+    image: ghcr.io/anomalyco/opencode:2.4.1
     restart: unless-stopped
     network_mode: host
     working_dir: /workspace

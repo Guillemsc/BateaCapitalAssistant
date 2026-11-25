@@ -1,6 +1,8 @@
 {
   "$schema": "https://opencode.ai/config.json",
-  "enabled_providers": ["openai"],
+  "enabled_providers": [
+    "openai"
+  ],
   "permission": {
     "*": "deny",
     "batea_*": "allow",
@@ -14,6 +16,18 @@
       "oauth": false,
       "headers": {
         "Authorization": "Bearer {env:BATEA_MCP_TOKEN}"
+      }
+    }
+  },
+  "model": "openai/gpt-6-luna",
+  "default_agent": "telegram",
+  "agent": {
+    "telegram": {
+      "mode": "primary",
+      "model": "openai/gpt-6-luna",
+      "variant": "high",
+      "options": {
+        "reasoningEffort": "high"
       }
     }
   }

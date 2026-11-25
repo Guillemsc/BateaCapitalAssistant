@@ -1,15 +1,23 @@
 package com.bateacapitalassistant;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.NullNode;
 import java.io.IOException;
 import java.net.URI;
-import java.net.http.*;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Base64;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 final class OpenCode {
     private static final String URL = System.getenv("BATEA_OPENCODE_URL");
-    private final Map<Long, String> sessions = new HashMap<>();
+    private static final Duration REQUEST_TIMEOUT = Duration.ofSeconds(10);
+    private final Map<Long, String> sessions = new ConcurrentHashMap<>();
     private final HttpClient http = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(5)).build();
 
     static boolean enabled() {
@@ -19,35 +27,76 @@ final class OpenCode {
     String reply(long user, String prompt) throws IOException, InterruptedException {
         String session = sessions.get(user);
         if (session == null) {
-            session = post("/session", Map.of("title", "Telegram")).path("id").asText();
-            if (!session.matches("ses_[a-zA-Z0-9]+")) throw new IOException("Invalid OpenCode session");
+            session = request("/api/session", Map.of("title", "Telegram"), REQUEST_TIMEOUT)
+                    .path("data").path("id").asText();
+            if (!session.matches("ses_[a-zA-Z0-9]+")) throw new IOException("Invalid OpenCode session ID");
             sessions.put(user, session);
         }
-        var answer = post("/session/" + session + "/message", Map.of(
-                "parts", List.of(Map.of("type", "text", "text", prompt))));
-        var lines = new ArrayList<String>();
-        for (var part : answer.path("parts")) {
-            if (part.path("type").asText().equals("text") && !part.path("synthetic").asBoolean()) {
-                lines.add(part.path("text").asText());
+
+        String path = "/api/session/" + session;
+        request(path + "/prompt", Map.of("text", prompt, "agent", "telegram"), REQUEST_TIMEOUT);
+        try {
+            request("/api/experimental/session/" + session + "/wait", Map.of(), Duration.ofMinutes(3));
+        } catch (IOException e) {
+            sessions.remove(user, session);
+            try {
+                request(path + "/interrupt", Map.of(), REQUEST_TIMEOUT);
+            } catch (IOException interruptFailure) {
+                e.addSuppressed(interruptFailure);
             }
+            throw e;
         }
-        String result = String.join("\n", lines).strip();
-        return result.isEmpty() ? "OpenCode returned no reply. Check its ChatGPT connection and service logs." : result;
+        JsonNode messages = request(path + "/message?order=desc&limit=50", null, REQUEST_TIMEOUT).path("data");
+        if (!messages.isArray()) throw new IOException("Invalid OpenCode transcript");
+        return replyText(messages);
     }
 
-    private JsonNode post(String path, Object body) throws IOException, InterruptedException {
+    private static String replyText(JsonNode messages) {
+        var newestFirst = new ArrayList<String>();
+        for (JsonNode message : messages) {
+            String type = message.path("type").asText();
+            if (type.equals("user")) break;
+            if (message.hasNonNull("error")) {
+                int status = message.path("error").path("status").asInt();
+                if (status == 401 || status == 403) return "OpenCode authentication failed. Check the ChatGPT sign-in.";
+                if (status == 429) return "OpenCode reached a provider limit. Check your ChatGPT usage.";
+                return "OpenCode could not complete the request. Check its service logs.";
+            }
+            if (!type.equals("assistant")) continue;
+
+            var parts = new ArrayList<String>();
+            for (JsonNode part : message.path("content")) {
+                if (part.path("type").asText().equals("text")) {
+                    String text = part.path("text").asText().strip();
+                    if (!text.isEmpty()) parts.add(text);
+                }
+            }
+            if (!parts.isEmpty()) newestFirst.add(String.join("\n", parts));
+        }
+        return newestFirst.isEmpty()
+                ? "OpenCode returned no reply. Check its model, ChatGPT sign-in, and service logs."
+                : String.join("\n", newestFirst.reversed());
+    }
+
+    private JsonNode request(String path, Object body, Duration timeout) throws IOException, InterruptedException {
         var request = HttpRequest.newBuilder(URI.create(URL + path))
-                .timeout(Duration.ofMinutes(3))
-                .header("Content-Type", "application/json")
-                .POST(HttpRequest.BodyPublishers.ofString(Bridge.JSON.writeValueAsString(body)));
+                .timeout(timeout)
+                .header("Accept", "application/json");
+        if (body != null) {
+            request.header("Content-Type", "application/json")
+                    .POST(HttpRequest.BodyPublishers.ofString(Bridge.JSON.writeValueAsString(body)));
+        }
         String password = System.getenv("OPENCODE_SERVER_PASSWORD");
         if (password != null && !password.isBlank()) {
             String credentials = Base64.getEncoder().encodeToString(
-                    ("opencode:" + password).getBytes(java.nio.charset.StandardCharsets.UTF_8));
+                    ("opencode:" + password).getBytes(StandardCharsets.UTF_8));
             request.header("Authorization", "Basic " + credentials);
         }
         var response = http.send(request.build(), HttpResponse.BodyHandlers.ofString());
         if (response.statusCode() / 100 != 2) throw new IOException("OpenCode HTTP " + response.statusCode());
-        return Bridge.JSON.readTree(response.body());
+        if (response.statusCode() == 204) return NullNode.getInstance();
+        var json = Bridge.JSON.readTree(response.body());
+        if (json == null || json.isMissingNode()) throw new IOException("Empty OpenCode API response");
+        return json;
     }
 }

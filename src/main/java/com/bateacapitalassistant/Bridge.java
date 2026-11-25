@@ -37,6 +37,7 @@ public final class Bridge {
             menu("help", "Show commands and examples"));
 
     private final OpenCode openCode = new OpenCode();
+    private final Set<Long> pendingOpenCode = java.util.concurrent.ConcurrentHashMap.newKeySet();
     private final String token;
     private final Set<Long> allowed;
     private final Commands commands = new Commands(this::refresh);
@@ -157,7 +158,26 @@ public final class Bridge {
         else if (command.equals("/start")) send(id, Commands.HELP);
         else if (input.equals("/new")) send(id, "No reset is needed. Use /help for commands.");
         else if (input.startsWith("/") || !OpenCode.enabled()) send(id, "Send /help for available commands.");
-        else send(id, openCode.reply(id, input));
+        else if (pendingOpenCode.add(id)) {
+            Thread.startVirtualThread(() -> {
+                try {
+                    String reply;
+                    try {
+                        reply = openCode.reply(id, input);
+                    } catch (IOException | RuntimeException e) {
+                        System.err.println("OpenCode request failed: " + e.getClass().getSimpleName());
+                        reply = "OpenCode could not answer. Check the model and ChatGPT sign-in.";
+                    }
+                    send(id, reply);
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                } catch (IOException e) {
+                    System.err.println("Could not deliver OpenCode reply");
+                } finally {
+                    pendingOpenCode.remove(id);
+                }
+            });
+        } else send(id, "OpenCode is still working on your previous message.");
     }
 
     private void handleCallback(JsonNode callback) throws IOException, InterruptedException {
