@@ -2,6 +2,7 @@ package com.bateacapitalassistant;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.NullNode;
+
 import java.io.IOException;
 import java.net.URI;
 import java.net.http.HttpClient;
@@ -17,12 +18,29 @@ import java.util.concurrent.ConcurrentHashMap;
 final class OpenCode {
     private static final String URL = System.getenv("BATEA_OPENCODE_URL");
     private static final Duration REQUEST_TIMEOUT = Duration.ofSeconds(10);
+    private static final Duration SESSION_TIMEOUT = Duration.ofMinutes(1);
+    private static final Duration PROMPT_TIMEOUT = Duration.ofMinutes(3);
     private static final long SESSION_IDLE_NANOS = Duration.ofMinutes(30).toNanos();
 
-    private record Session(String id, long lastInteraction) {}
+    private record Session(String id, long lastInteraction) {
+    }
 
     private final Map<Long, Session> sessions = new ConcurrentHashMap<>();
     private final HttpClient http = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(5)).build();
+
+    interface Transport {
+        JsonNode request(String path, Object body, Duration timeout) throws IOException, InterruptedException;
+    }
+
+    private final Transport transport;
+
+    OpenCode() {
+        transport = this::request;
+    }
+
+    OpenCode(Transport transport) {
+        this.transport = transport;
+    }
 
     static boolean enabled() {
         return URL != null && !URL.isBlank();
@@ -33,31 +51,36 @@ final class OpenCode {
         Session previous = sessions.get(user);
         String session;
         if (previous == null || now - previous.lastInteraction() >= SESSION_IDLE_NANOS) {
-            session = request("/api/session", Map.of("title", "Telegram"), REQUEST_TIMEOUT)
+            session = transport.request("/api/session", Map.of("title", "Telegram"), SESSION_TIMEOUT)
                     .path("data").path("id").asText();
             if (!session.matches("ses_[a-zA-Z0-9]+")) throw new IOException("Invalid OpenCode session ID");
         } else {
             session = previous.id();
         }
-        Session current = new Session(session, now);
-        sessions.put(user, current);
-
         String path = "/api/session/" + session;
-        request(path + "/prompt", Map.of("text", prompt, "agent", "telegram"), REQUEST_TIMEOUT);
         try {
-            request("/api/experimental/session/" + session + "/wait", Map.of(), Duration.ofMinutes(3));
+            transport.request(path + "/prompt", Map.of("text", prompt, "agent", "telegram"), PROMPT_TIMEOUT);
+            transport.request("/api/experimental/session/" + session + "/wait", Map.of(), PROMPT_TIMEOUT);
+            JsonNode messages = transport.request(path + "/message?order=desc&limit=50", null, REQUEST_TIMEOUT).path("data");
+            if (!messages.isArray()) throw new IOException("Invalid OpenCode transcript");
+            String reply = replyText(messages);
+            sessions.put(user, new Session(session, System.nanoTime()));
+            return reply;
         } catch (IOException e) {
-            sessions.remove(user, current);
+            if (previous != null) sessions.remove(user, previous);
             try {
-                request(path + "/interrupt", Map.of(), REQUEST_TIMEOUT);
+                transport.request(path + "/interrupt", Map.of(), REQUEST_TIMEOUT);
             } catch (IOException interruptFailure) {
                 e.addSuppressed(interruptFailure);
+            } catch (InterruptedException interrupted) {
+                Thread.currentThread().interrupt();
+                e.addSuppressed(interrupted);
             }
             throw e;
+        } catch (InterruptedException e) {
+            if (previous != null) sessions.remove(user, previous);
+            throw e;
         }
-        JsonNode messages = request(path + "/message?order=desc&limit=50", null, REQUEST_TIMEOUT).path("data");
-        if (!messages.isArray()) throw new IOException("Invalid OpenCode transcript");
-        return replyText(messages);
     }
 
     private static String replyText(JsonNode messages) {
@@ -87,6 +110,19 @@ final class OpenCode {
                 : String.join("\n", newestFirst.reversed());
     }
 
+    static String failureMessage(Throwable error) {
+        for (Throwable cause = error; cause != null; cause = cause.getCause()) {
+            if (cause instanceof java.net.http.HttpTimeoutException)
+                return "OpenCode took too long to respond. The request may still be running; check OpenCode before repeating an action.";
+            if (cause instanceof java.net.ConnectException)
+                return "Could not connect to the OpenCode server. Check that it is running and reachable.";
+        }
+        String detail = error instanceof IOException ? error.getMessage() : "";
+        if (detail != null && (detail.endsWith(": HTTP 401") || detail.endsWith(": HTTP 403")))
+            return "The OpenCode server rejected the bot's credentials. Check the bot's OpenCode server password.";
+        return "OpenCode could not complete this request. Check the bot logs for the failing endpoint and error.";
+    }
+
     private JsonNode request(String path, Object body, Duration timeout) throws IOException, InterruptedException {
         var request = HttpRequest.newBuilder(URI.create(URL + path))
                 .timeout(timeout)
@@ -108,7 +144,8 @@ final class OpenCode {
         } catch (IOException e) {
             throw new IOException("OpenCode " + endpoint + ": " + e.getClass().getSimpleName(), e);
         }
-        if (response.statusCode() / 100 != 2) throw new IOException("OpenCode " + endpoint + ": HTTP " + response.statusCode());
+        if (response.statusCode() / 100 != 2)
+            throw new IOException("OpenCode " + endpoint + ": HTTP " + response.statusCode());
         if (response.statusCode() == 204) return NullNode.getInstance();
         JsonNode json;
         try {

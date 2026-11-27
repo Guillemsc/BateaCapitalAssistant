@@ -167,7 +167,7 @@ public final class Bridge {
                     } catch (IOException | RuntimeException e) {
                         System.err.println("OpenCode request failed: " +
                                 (e instanceof IOException ? e.getMessage() : e.getClass().getSimpleName()));
-                        reply = "OpenCode could not answer. Check the model and ChatGPT sign-in.";
+                        reply = OpenCode.failureMessage(e);
                     }
                     send(id, reply);
                 } catch (InterruptedException e) {
