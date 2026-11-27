@@ -40,6 +40,20 @@ The disk watchdog checks physical-disk busy time every 10 seconds. It notifies a
 
 Disk reports include a script or JAR filename for recognized runtimes when available. If the Docker socket is available, the bot resolves process container IDs to Docker names once per report; otherwise it shows the short ID. Reports do not include complete command lines. The Docker socket gives the container control of the Docker daemon and therefore broad access to the host, even when the socket is mounted read-only. Remove the socket mount from `compose.yaml` to retain ID-only reports.
 
+`/space` reports volume capacity and free space on demand. Disk capacity does not generate alerts. `/services` lists the live Docker container states, including stopped and unhealthy containers. `/queue` fetches show, film, and music queues concurrently and reports partial results if a service is unavailable. OpenCode can use these commands for natural-language questions after its updated `opencode.json` is deployed.
+
+The bot checks Home Assistant device availability once a minute using the existing token. It refreshes the device and entity registries every 15 minutes and reads only live states between refreshes. It sends a Telegram alert after three consecutive checks report all known states for a device as unavailable, then sends a recovery notice once a state becomes available. A Home Assistant API failure does not count as a device outage. Availability is based on Home Assistant entity states, and alert history resets when the bot restarts.
+
+`/backups` reads the existing NAS collector's sanitized snapshot from `/secrets/backup-status.json`. The backup watchdog checks it every five minutes, sends one notification when a job fails or its result cannot be interpreted, and sends an update when the issue clears. Snapshots more than two hours old are reported as stale. Notification state is persisted in `/state/backup-alerts.json`; failed deliveries are retried. As with disk alerts, a crash after sending but before saving can duplicate a notification. Backup monitoring starts when a snapshot is first available.
+
+The host's existing Hyper Backup collector requires root access. In DSM Task Scheduler, run the following as root every five minutes to refresh the snapshot in the credentials directory already mounted by the bot:
+
+```bash
+/usr/bin/python3 /var/services/homes/BateaCapital-admin/.config/nas-assistant/collect-backup-status.py /var/services/homes/BateaCapital-admin/.config/nas-assistant/backup-status.json
+```
+
+The snapshot contains `collected_at` (UTC ISO timestamp) and a `tasks` array with `task_id`, `name`, `state`, and `last_bkp_result`. Boolean results and the textual results `success`, `successful`, `succeeded`, `failed`, `failure`, and `error` are recognized. Other result formats are reported as unknown so they cannot silently appear healthy. This collector reads backup status and does not start backup jobs.
+
 ## Publish for Synology URL import
 
 The manual **Publish image** workflow publishes to Docker Hub. To set up publishing:

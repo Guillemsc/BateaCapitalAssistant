@@ -11,7 +11,7 @@ import java.util.regex.Pattern;
 
 final class Commands {
     static final Set<String> SUPPORTED = Set.of("/nas", "/disk", "/transcoding", "/seerr",
-            "/music", "/home", "/shows", "/films", "/qbittorrent", "/refresh");
+            "/music", "/home", "/shows", "/films", "/qbittorrent", "/refresh", "/space", "/backups", "/services", "/queue");
     static final String HELP = """
             Commands
 
@@ -21,6 +21,10 @@ final class Commands {
             /qbittorrent — torrent states and speeds
             /refresh — update Telegram command menu
             /nas
+            /space — disk capacity and available space
+            /backups — latest backup job results
+            /services — running, stopped and unhealthy containers
+            /queue — combined show, film and music downloads
             /disk
             /transcoding
             /seerr help
@@ -72,7 +76,7 @@ final class Commands {
                     """.strip();
             case "/home" -> "/home [Area or device name]";
             case "/disk" -> "/disk — disk rates and busiest readable processes";
-            case "/films", "/qbittorrent", "/nas", "/transcoding" -> name;
+            case "/films", "/qbittorrent", "/nas", "/transcoding", "/space", "/backups", "/services", "/queue" -> name;
             case "/refresh" -> "/refresh — update the Telegram command menu";
             default -> HELP;
         };
@@ -155,6 +159,10 @@ final class Commands {
             case "/qbittorrent" -> status ? MediaServices.torrents() : help(command);
             case "/transcoding" -> status ? Status.transcoding() : help(command);
             case "/nas" -> status ? Status.nas() : help(command);
+            case "/space" -> status ? Status.space() : help(command);
+            case "/backups" -> status ? Backups.read().text() : help(command);
+            case "/services" -> status ? Services.status() : help(command);
+            case "/queue" -> status ? Status.queue() : help(command);
             case "/disk" -> status ? Status.disk() : help(command);
             case "/home" -> action.equals("status") && !status ? help(command)
                     : Status.home(String.join(" ", parts.subList(1, parts.size())));

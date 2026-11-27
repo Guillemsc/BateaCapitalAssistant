@@ -13,6 +13,40 @@ final class Status {
     private Status() {
     }
 
+    static String space() throws IOException {
+        var volume = java.nio.file.Files.getFileStore(java.nio.file.Path.of("/host-volume1"));
+        long total = volume.getTotalSpace(), available = volume.getUsableSpace(), used = total - volume.getUnallocatedSpace();
+        return "Volume1 disk space\n"
+                + "• Used: " + size(IntegrationSupport.JSON.valueToTree(used)) + " / " + size(IntegrationSupport.JSON.valueToTree(total))
+                + (total > 0 ? format(" (%.1f%%)", 100.0 * used / total) : "")
+                + "\n• Available: " + size(IntegrationSupport.JSON.valueToTree(available));
+    }
+
+    static String queue() throws InterruptedException {
+        Map<String, java.util.concurrent.Callable<String>> sources = new LinkedHashMap<>();
+        sources.put("Shows", () -> MediaServices.queue(true));
+        sources.put("Films", () -> MediaServices.queue(false));
+        sources.put("Music", Status::downloads);
+        return queue(sources);
+    }
+
+    static String queue(Map<String, java.util.concurrent.Callable<String>> sources) throws InterruptedException {
+        var lines = new ArrayList<String>();
+        lines.add("Media queue — current download and import status");
+        try (var executor = java.util.concurrent.Executors.newVirtualThreadPerTaskExecutor()) {
+            var futures = new LinkedHashMap<String, java.util.concurrent.Future<String>>();
+            sources.forEach((name, call) -> futures.put(name, executor.submit(call)));
+            for (var entry : futures.entrySet()) {
+                try {
+                    lines.add("\n" + entry.getValue().get());
+                } catch (java.util.concurrent.ExecutionException e) {
+                    lines.add("\n" + entry.getKey() + " queue unavailable. Other results are partial.");
+                }
+            }
+        }
+        return String.join("\n", lines);
+    }
+
     static String nas() throws IOException, InterruptedException {
         var data = NasMetrics.status();
         var memory = data.required("memory");

@@ -60,7 +60,7 @@ public final class HomeAssistant {
         }
     }
 
-    private static List<JsonNode> registries(String token) throws IOException, InterruptedException {
+    private static List<JsonNode> registries(String token, String... kinds) throws IOException, InterruptedException {
         Listener listener = new Listener();
         WebSocket socket;
         try {
@@ -77,7 +77,7 @@ public final class HomeAssistant {
                 throw new IOException("Home Assistant authentication failed");
             List<JsonNode> result = new ArrayList<>();
             int id = 1;
-            for (String kind : List.of("area", "device", "entity")) {
+            for (String kind : kinds) {
                 send(socket, Map.of("id", id, "type", "config/" + kind + "_registry/list"));
                 JsonNode response = listener.receive();
                 if (response.path("id").asInt() != id || !response.path("success").asBoolean() || !response.path("result").isArray())
@@ -99,9 +99,67 @@ public final class HomeAssistant {
         }
     }
 
+    public record DeviceAvailability(String name, boolean unavailable) {}
+
+    public static final class AvailabilityMonitor {
+        private static final long REGISTRY_REFRESH_NANOS = Duration.ofMinutes(15).toNanos();
+        private DeviceIndex index;
+        private long refreshedAt;
+
+        public Map<String, DeviceAvailability> sample() throws IOException, InterruptedException {
+            String token = secret("homeassistant-token");
+            if (index == null || System.nanoTime() - refreshedAt >= REGISTRY_REFRESH_NANOS) {
+                List<JsonNode> registry = registries(token, "device", "entity");
+                index = deviceIndex(registry.get(0), registry.get(1));
+                refreshedAt = System.nanoTime();
+            }
+            return deviceAvailability(index, states(token));
+        }
+    }
+
+    private record DeviceIndex(Map<String, String> names, Map<String, String> owners) {}
+
+    static Map<String, DeviceAvailability> deviceAvailability(JsonNode devices, JsonNode entities, JsonNode states) {
+        return deviceAvailability(deviceIndex(devices, entities), states);
+    }
+
+    private static DeviceIndex deviceIndex(JsonNode devices, JsonNode entities) {
+        Map<String, String> names = new HashMap<>();
+        for (JsonNode device : devices) {
+            String id = device.path("id").asText();
+            if (!id.isBlank()) names.put(id, first(value(device, "name_by_user", ""), value(device, "name", ""), id));
+        }
+        Map<String, String> owners = new HashMap<>();
+        for (JsonNode entity : entities) {
+            String id = entity.path("device_id").asText();
+            if (names.containsKey(id) && !entity.hasNonNull("disabled_by"))
+                owners.put(entity.path("entity_id").asText(), id);
+        }
+        return new DeviceIndex(names, owners);
+    }
+
+    private static Map<String, DeviceAvailability> deviceAvailability(DeviceIndex index, JsonNode states) {
+        Map<String, Boolean> unavailable = new HashMap<>();
+        for (JsonNode entity : states) {
+            String owner = index.owners().get(entity.path("entity_id").asText());
+            String state = entity.path("state").asText();
+            if (owner == null || state.isBlank() || state.equals("unknown")) continue;
+            unavailable.merge(owner, state.equals("unavailable"), (a, b) -> a && b);
+        }
+        Map<String, DeviceAvailability> result = new HashMap<>();
+        unavailable.forEach((id, offline) -> result.put(id, new DeviceAvailability(index.names().get(id), offline)));
+        return result;
+    }
+
+    private static JsonNode states(String token) throws IOException, InterruptedException {
+        JsonNode states = request(BASE + "/api/states", null, Map.of("Authorization", "Bearer " + token), 20);
+        if (states == null || !states.isArray()) throw new IOException("Invalid Home Assistant states");
+        return states;
+    }
+
     public static ObjectNode status(String query) throws IOException, InterruptedException {
         String token = IntegrationSupport.secret("homeassistant-token");
-        List<JsonNode> registries = registries(token);
+        List<JsonNode> registries = registries(token, "area", "device", "entity");
         Map<String, String> areas = new HashMap<>(), deviceAreas = new HashMap<>();
         Map<String, JsonNode> entities = new HashMap<>();
         registries.get(0).forEach(a -> areas.put(a.path("area_id").asText(), a.path("name").asText()));
@@ -110,8 +168,7 @@ public final class HomeAssistant {
             if (e.path("disabled_by").isNull() || e.path("disabled_by").isMissingNode())
                 entities.put(e.path("entity_id").asText(), e);
         });
-        JsonNode states = IntegrationSupport.request(BASE + "/api/states", null, Map.of("Authorization", "Bearer " + token), 20);
-        if (!states.isArray()) throw new IOException("Invalid Home Assistant states");
+        JsonNode states = states(token);
         ArrayNode found = IntegrationSupport.JSON.createArrayNode();
         for (JsonNode state : states) {
             String id = state.path("entity_id").asText();

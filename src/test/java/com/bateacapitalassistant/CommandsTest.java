@@ -10,6 +10,19 @@ class CommandsTest {
     private final Commands commands = new Commands(() -> fail("Unexpected menu change"));
 
     @Test
+    void queueKeepsSuccessfulResultsWhenOneServiceFails() throws Exception {
+        var sources = new java.util.LinkedHashMap<String, java.util.concurrent.Callable<String>>();
+        sources.put("Shows", () -> "One episode downloading");
+        sources.put("Films", () -> {
+            throw new java.io.IOException("offline");
+        });
+        String report = Status.queue(sources);
+        assertTrue(report.contains("One episode downloading"));
+        assertTrue(report.contains("Films queue unavailable"));
+        assertTrue(report.contains("partial"));
+    }
+
+    @Test
     void rejectsRedundantStatusVariantsWithoutCallingServices() throws Exception {
         for (String command : List.of("/disk", "/nas", "/seerr", "/music", "/films", "/qbittorrent", "/transcoding")) {
             assertEquals(Commands.help(command), commands.run(command, command + " status"));

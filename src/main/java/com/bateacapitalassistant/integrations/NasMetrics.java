@@ -6,8 +6,11 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.io.IOException;
 import java.nio.file.*;
 import java.util.*;
+import java.util.regex.Pattern;
 
 public final class NasMetrics {
+    private static final Pattern DISK_NAME = Pattern.compile("sata[0-9]+|sd[a-zA-Z]+|nvme[0-9]+n[0-9]+");
+    private static final Pattern WHITESPACE = Pattern.compile("\\s+");
     private static final Path METRICS = Path.of("/host-metrics");
 
     private NasMetrics() {
@@ -19,8 +22,8 @@ public final class NasMetrics {
     public static Map<String, Disk> disks() throws IOException {
         Map<String, Disk> result = new TreeMap<>();
         for (String line : Files.readAllLines(METRICS.resolve("diskstats"))) {
-            String[] f = line.strip().split("\\s+");
-            if (f.length < 14 || !f[2].matches("(sata[0-9]+|sd[a-zA-Z]+|nvme[0-9]+n[0-9]+)")) continue;
+            String[] f = WHITESPACE.split(line.strip());
+            if (f.length < 14 || !DISK_NAME.matcher(f[2]).matches()) continue;
             try {
                 result.put(f[2], new Disk(Long.parseLong(f[5]), Long.parseLong(f[9]),
                         Long.parseLong(f[12]), Long.parseLong(f[11])));

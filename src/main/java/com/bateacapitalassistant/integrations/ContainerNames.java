@@ -27,40 +27,52 @@ final class ContainerNames {
     }
 
     static Map<String, String> read(Path socket) {
-        if (!Files.exists(socket)) return Map.of();
+        return parseNames(containers(socket));
+    }
+
+    static JsonNode containers() {
+        return containers(SOCKET);
+    }
+
+    static JsonNode containers(Path socket) {
+        if (!Files.exists(socket)) return null;
         try (SocketChannel channel = SocketChannel.open(StandardProtocolFamily.UNIX)) {
-            FutureTask<Map<String, String>> task = new FutureTask<>(() -> query(channel, socket));
+            FutureTask<JsonNode> task = new FutureTask<>(() -> query(channel, socket));
             Thread.startVirtualThread(task);
             try {
                 return task.get(TIMEOUT_SECONDS, TimeUnit.SECONDS);
             } catch (TimeoutException e) {
                 channel.close();
                 task.cancel(true);
-                return Map.of();
+                return null;
             } catch (ExecutionException e) {
-                return Map.of();
+                return null;
             } catch (InterruptedException e) {
                 channel.close();
                 task.cancel(true);
                 Thread.currentThread().interrupt();
-                return Map.of();
+                return null;
             }
         } catch (IOException | RuntimeException e) {
-            return Map.of();
+            return null;
         }
     }
 
-    private static Map<String, String> query(SocketChannel channel, Path socket) throws IOException {
+    private static JsonNode query(SocketChannel channel, Path socket) throws IOException {
         channel.connect(UnixDomainSocketAddress.of(socket));
         ByteBuffer request = StandardCharsets.US_ASCII.encode(
                 "GET /v1.41/containers/json?all=1 HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n");
         while (request.hasRemaining()) channel.write(request);
-        return parseResponse(Channels.newInputStream(channel));
+        return parsePayload(Channels.newInputStream(channel));
     }
 
     static Map<String, String> parseResponse(InputStream input) throws IOException {
+        return parseNames(parsePayload(input));
+    }
+
+    private static JsonNode parsePayload(InputStream input) throws IOException {
         String status = readLine(input, 8192);
-        if (!status.matches("HTTP/1\\.[01] 200(?: .*)?")) return Map.of();
+        if (!status.matches("HTTP/1\\.[01] 200(?: .*)?")) return null;
         boolean chunked = false;
         int length = -1;
         int headerBytes = 0;
@@ -91,7 +103,7 @@ final class ContainerNames {
             body = input.readNBytes(MAX_RESPONSE_BYTES + 1);
             if (body.length > MAX_RESPONSE_BYTES) throw new IOException("Docker response too large");
         } else throw new IOException("Invalid Docker response length");
-        return parseNames(IntegrationSupport.JSON.readTree(body));
+        return IntegrationSupport.JSON.readTree(body);
     }
 
     private static String readLine(InputStream input, int max) throws IOException {

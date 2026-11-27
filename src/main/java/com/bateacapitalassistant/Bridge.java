@@ -34,6 +34,10 @@ public final class Bridge {
             menu("nas", "NAS status"), menu("disk", "Disk activity: /disk"),
             menu("seerr", "Media requests and search"), menu("music", "Music search and downloads"),
             menu("home", "Home Assistant status"), menu("refresh", "Refresh Telegram command menu"),
+            menu("space", "Disk capacity and available space"),
+            menu("backups", "Latest backup job results"),
+            menu("services", "Running, stopped and unhealthy containers"),
+            menu("queue", "Show, film and music queues"),
             menu("help", "Show commands and examples"));
 
     private final OpenCode openCode = new OpenCode();
@@ -216,6 +220,12 @@ public final class Bridge {
         Thread diskWatchdog = new Thread(new DiskWatchdog(Path.of("/state/disk-watchdog.json"), allowed, this::send), "disk-watchdog");
         diskWatchdog.setDaemon(true);
         diskWatchdog.start();
+        Thread backupWatchdog = new Thread(new BackupWatchdog(Path.of("/state/backup-alerts.json"), allowed, this::send), "backup-watchdog");
+        backupWatchdog.setDaemon(true);
+        backupWatchdog.start();
+        Thread homeWatchdog = new Thread(new HomeWatchdog(allowed, this::send), "home-watchdog");
+        homeWatchdog.setDaemon(true);
+        homeWatchdog.start();
         try {
             refresh();
         } catch (IOException | RuntimeException e) {
