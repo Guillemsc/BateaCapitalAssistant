@@ -2,11 +2,25 @@
 
 # BateaCapitalAssistant
 
-Private Telegram command bot for Sonarr, Radarr, qBittorrent, and the NAS tools service. Built with Java 21 and Maven, following Likearr's executable JAR and two-stage Docker build.
+Private Telegram bot with Java integrations for Sonarr, Radarr, qBittorrent, NAS metrics, and OpenCode. Built with Java 21 and Maven, following Likearr's executable JAR and two-stage Docker build.
 
 Build and test with `mvn clean verify`. The executable is `target/bateacapitalassistant-1.0.0.jar`.
 
 For Docker Compose, set `BATEA_SECRETS_HOST` and `BATEA_STATE_HOST` to the existing host directories and run `docker compose up --build -d`. The Java bot connects directly to the NAS services. Set `BATEA_VOLUME_HOST` to a path on the NAS volume to report its free space. The integrations use the existing NAS address and ports in the source.
+
+The NAS deployment uses project `batea-opencode` and `/volume1/docker/opencode/app/compose.opencode.yaml`. Its `.env`, `opencode.json`, `opencode-data`, and `opencode-workspace` belong to the active deployment.
+
+To update the Telegram bot on the NAS:
+
+```bash
+sudo /usr/local/bin/docker compose \
+  -p batea-opencode \
+  --project-directory /volume1/docker/opencode/app \
+  -f /volume1/docker/opencode/app/compose.opencode.yaml \
+  up -d --no-deps --pull always bateacapitalassistant
+```
+
+The standalone `compose.yaml` builds the Java bot locally. Use `compose.opencode.yaml` for the OpenCode deployment.
 
 Mount these existing files under `/secrets`:
 
@@ -18,7 +32,7 @@ Mount these existing files under `/secrets`:
 | `sonarr-api-key`, `radarr-api-key` | The respective API keys |
 | `qbittorrent.json` | JSON object with `url`, `username`, and `password` |
 
-Reuse the writable `/state` directory to carry over the Telegram update offset and Decluttarr cursor. Stop the Python bot before starting the Java bot with the same token. For Decluttarr notifications, bind mount the log directory at `/decluttarr-logs` (containing `logs.txt`) and optionally mount the config file at `/decluttarr-config.yaml`. Both mounts can be read-only.
+Reuse the writable `/state` directory to carry over the Telegram update offset and Decluttarr cursor. For Decluttarr notifications, bind mount the log directory at `/decluttarr-logs` (containing `logs.txt`) and optionally mount the config file at `/decluttarr-config.yaml`. Both mounts can be read-only.
 
 `/disk` reports disk rates and the busiest readable processes using a separate two-second sample of `/proc/<pid>/io`. Mount the NAS host's `/proc` read-only at `/host-proc` and grant `SYS_PTRACE`, as in `compose.yaml`. This capability gives the container broad access to process information. NAS security settings may still restrict some counters; the response indicates when the sample is incomplete. Rates are totals across devices and may omit cached I/O or kernel activity.
 

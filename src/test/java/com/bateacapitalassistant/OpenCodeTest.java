@@ -10,6 +10,41 @@ import static org.junit.jupiter.api.Assertions.*;
 
 class OpenCodeTest {
     @Test
+    void reconnectsDroppedWaitWithoutResendingPrompt() throws Exception {
+        var paths = new java.util.ArrayList<String>();
+        var attempts = new java.util.concurrent.atomic.AtomicInteger();
+        var client = new OpenCode((path, body, timeout) -> {
+            paths.add(path);
+            if (path.equals("/api/session")) return Bridge.JSON.readTree("{\"data\":{\"id\":\"ses_wait\"}}");
+            if (path.endsWith("/wait") && attempts.incrementAndGet() < 3)
+                throw new OpenCode.TransportFailure("/wait", new IOException("closed", new java.io.EOFException()));
+            if (path.contains("/message?")) return Bridge.JSON.readTree("""
+                    {"data":[{"type":"assistant","content":[{"type":"text","text":"Finished"}]}]}
+                    """);
+            return com.fasterxml.jackson.databind.node.NullNode.getInstance();
+        }, java.time.Duration.ZERO);
+        assertEquals("Finished", client.reply(1, "Hi"));
+        assertEquals(3, attempts.get());
+        assertEquals(1, paths.stream().filter(p -> p.endsWith("/prompt")).count());
+        assertFalse(paths.stream().anyMatch(p -> p.endsWith("/interrupt")));
+    }
+
+    @Test
+    void doesNotRetryWaitAuthenticationErrors() throws Exception {
+        var attempts = new java.util.concurrent.atomic.AtomicInteger();
+        var client = new OpenCode((path, body, timeout) -> {
+            if (path.equals("/api/session")) return Bridge.JSON.readTree("{\"data\":{\"id\":\"ses_auth\"}}");
+            if (path.endsWith("/wait")) {
+                attempts.incrementAndGet();
+                throw new IOException("OpenCode /wait: HTTP 401");
+            }
+            return com.fasterxml.jackson.databind.node.NullNode.getInstance();
+        }, java.time.Duration.ZERO);
+        assertThrows(IOException.class, () -> client.reply(1, "Hi"));
+        assertEquals(1, attempts.get());
+    }
+
+    @Test
     void allowsColdStartAndReusesOnlySuccessfulSessions() throws Exception {
         var paths = new java.util.ArrayList<String>();
         var client = new OpenCode((path, body, timeout) -> {

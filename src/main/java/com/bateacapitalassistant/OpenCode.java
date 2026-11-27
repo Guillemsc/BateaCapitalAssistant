@@ -32,14 +32,28 @@ final class OpenCode {
         JsonNode request(String path, Object body, Duration timeout) throws IOException, InterruptedException;
     }
 
+    static final class TransportFailure extends IOException {
+        TransportFailure(String endpoint, IOException cause) {
+            super("OpenCode " + endpoint + ": " + cause.getClass().getSimpleName()
+                    + (cause.getCause() == null ? "" : " / " + cause.getCause().getClass().getSimpleName()), cause);
+        }
+    }
+
     private final Transport transport;
+    private final Duration waitRetryDelay;
 
     OpenCode() {
         transport = this::request;
+        waitRetryDelay = Duration.ofSeconds(1);
     }
 
     OpenCode(Transport transport) {
+        this(transport, Duration.ofSeconds(1));
+    }
+
+    OpenCode(Transport transport, Duration waitRetryDelay) {
         this.transport = transport;
+        this.waitRetryDelay = waitRetryDelay;
     }
 
     static boolean enabled() {
@@ -60,7 +74,7 @@ final class OpenCode {
         String path = "/api/session/" + session;
         try {
             transport.request(path + "/prompt", Map.of("text", prompt, "agent", "telegram"), PROMPT_TIMEOUT);
-            transport.request("/api/experimental/session/" + session + "/wait", Map.of(), PROMPT_TIMEOUT);
+            waitForCompletion(session);
             JsonNode messages = transport.request(path + "/message?order=desc&limit=50", null, REQUEST_TIMEOUT).path("data");
             if (!messages.isArray()) throw new IOException("Invalid OpenCode transcript");
             String reply = replyText(messages);
@@ -80,6 +94,24 @@ final class OpenCode {
         } catch (InterruptedException e) {
             if (previous != null) sessions.remove(user, previous);
             throw e;
+        }
+    }
+
+    private void waitForCompletion(String session) throws IOException, InterruptedException {
+        long deadline = System.nanoTime() + PROMPT_TIMEOUT.toNanos();
+        while (true) {
+            long remaining = deadline - System.nanoTime();
+            if (remaining <= 0) throw new java.net.http.HttpTimeoutException("OpenCode completion deadline exceeded");
+            try {
+                transport.request("/api/experimental/session/" + session + "/wait", Map.of(), Duration.ofNanos(remaining));
+                return;
+            } catch (TransportFailure e) {
+                if (System.nanoTime() >= deadline)
+                    throw new java.net.http.HttpTimeoutException("OpenCode completion deadline exceeded");
+                System.err.println(e.getMessage() + "; reconnecting wait without resubmitting prompt");
+                long pause = Math.min(waitRetryDelay.toNanos(), Math.max(0, deadline - System.nanoTime()));
+                Thread.sleep(Duration.ofNanos(pause));
+            }
         }
     }
 
@@ -142,7 +174,7 @@ final class OpenCode {
         try {
             response = http.send(request.build(), HttpResponse.BodyHandlers.ofString());
         } catch (IOException e) {
-            throw new IOException("OpenCode " + endpoint + ": " + e.getClass().getSimpleName(), e);
+            throw new TransportFailure(endpoint, e);
         }
         if (response.statusCode() / 100 != 2)
             throw new IOException("OpenCode " + endpoint + ": HTTP " + response.statusCode());
