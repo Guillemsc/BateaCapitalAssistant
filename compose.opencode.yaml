@@ -4,12 +4,9 @@ services:
     pull_policy: always
     restart: unless-stopped
     container_name: bateacapitalassistant
-    network_mode: host
     environment:
       BATEA_HOME_CONTROL_ENTITIES: ${BATEA_HOME_CONTROL_ENTITIES:-}
-      BATEA_OPENCODE_URL: http://127.0.0.1:4196
-      BATEA_MCP_TOKEN: ${BATEA_MCP_TOKEN:?Required}
-      OPENCODE_SERVER_PASSWORD: ${OPENCODE_SERVER_PASSWORD:?Required}
+    security_opt: ["no-new-privileges:true"]
     cap_add:
       - SYS_PTRACE
     volumes:
@@ -23,21 +20,5 @@ services:
       - /proc/stat:/host-metrics/stat:ro
       - /proc/meminfo:/host-metrics/meminfo:ro
       - ${BATEA_VOLUME_HOST:?Set BATEA_VOLUME_HOST}:/host-volume1:ro
-  opencode:
-    image: ghcr.io/anomalyco/opencode:2.4.1
-    restart: unless-stopped
-    network_mode: host
-    working_dir: /workspace
-    command: ["serve", "--hostname", "127.0.0.1", "--port", "4196"]
-    environment:
-      OPENCODE_ENABLE_EXA: "1"
-      XDG_DATA_HOME: /opencode-data
-      OPENCODE_CONFIG: /etc/batea-opencode.json
-      OPENCODE_SERVER_PASSWORD: ${OPENCODE_SERVER_PASSWORD:?Required}
-      BATEA_MCP_TOKEN: ${BATEA_MCP_TOKEN:?Required}
-    volumes:
       - ./opencode-data:/opencode-data
       - ./opencode-workspace:/workspace
-      - ./opencode.json:/etc/batea-opencode.json:ro
-    cap_drop: [ALL]
-    security_opt: ["no-new-privileges:true"]

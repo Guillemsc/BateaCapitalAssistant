@@ -2,3 +2,6 @@
 !pom.xml
 !src/
 !src/**
+!opencode.json
+!scripts/
+!scripts/run-assistant.sh

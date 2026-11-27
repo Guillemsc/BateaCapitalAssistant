@@ -3,6 +3,7 @@ services:
     build: .
     image: bateacapitalassistant:local
     restart: unless-stopped
+    security_opt: ["no-new-privileges:true"]
     cap_add:
       - SYS_PTRACE
     volumes:
@@ -16,3 +17,9 @@ services:
       - /proc/stat:/host-metrics/stat:ro
       - /proc/meminfo:/host-metrics/meminfo:ro
       - ${BATEA_VOLUME_HOST:?Set BATEA_VOLUME_HOST}:/host-volume1:ro
+      - opencode-data:/opencode-data
+      - opencode-workspace:/workspace
+
+volumes:
+  opencode-data:
+  opencode-workspace:

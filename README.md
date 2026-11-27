@@ -8,19 +8,22 @@ Build and test with `mvn clean verify`. The executable is `target/bateacapitalas
 
 For Docker Compose, set `BATEA_SECRETS_HOST` and `BATEA_STATE_HOST` to the existing host directories and run `docker compose up --build -d`. The Java bot connects directly to the NAS services. Set `BATEA_VOLUME_HOST` to a path on the NAS volume to report its free space. The integrations use the existing NAS address and ports in the source.
 
-The NAS deployment uses project `batea-opencode` and `/volume1/docker/opencode/app/compose.opencode.yaml`. Its `.env`, `opencode.json`, `opencode-data`, and `opencode-workspace` belong to the active deployment.
+The published image starts both the Java bot and OpenCode. It embeds the repo's `opencode.json`. Both processes use loopback inside the container and the image generates their internal credentials at startup. The Telegram credentials, Home Assistant credentials, and OpenCode provider login remain on persistent mounts.
 
-To update the Telegram bot on the NAS:
+The NAS uses project `batea-opencode` under `/volume1/docker/opencode/app`. For the one-time migration from separate containers, publish the new image, stop the old OpenCode service, and give the bundled OpenCode user ownership of its existing data and workspace. This preserves the provider login:
 
 ```bash
-sudo /usr/local/bin/docker compose \
-  -p batea-opencode \
-  --project-directory /volume1/docker/opencode/app \
-  -f /volume1/docker/opencode/app/compose.opencode.yaml \
-  up -d --no-deps --pull always bateacapitalassistant
+cd /volume1/docker/opencode/app
+sudo /usr/local/bin/docker compose -p batea-opencode -f compose.opencode.yaml stop opencode
+sudo chown -R 4196:4196 opencode-data opencode-workspace
 ```
 
-The standalone `compose.yaml` builds the Java bot locally. Use `compose.opencode.yaml` for the OpenCode deployment.
+Then run `./scripts/deploy-nas.sh` from the PC checkout to install the single-service Compose file and pull the image. For future releases, use this on the NAS after publishing:
+
+```bash
+cd /volume1/docker/opencode/app
+sudo /usr/local/bin/docker compose -p batea-opencode -f compose.opencode.yaml up -d --pull always
+```
 
 Mount these existing files under `/secrets`:
 
@@ -40,7 +43,7 @@ The disk watchdog checks physical-disk busy time every 10 seconds. It notifies a
 
 Disk reports include a script or JAR filename for recognized runtimes when available. If the Docker socket is available, the bot resolves process container IDs to Docker names once per report; otherwise it shows the short ID. Reports do not include complete command lines. The Docker socket gives the container control of the Docker daemon and therefore broad access to the host, even when the socket is mounted read-only. Remove the socket mount from `compose.yaml` to retain ID-only reports.
 
-`/space` reports volume capacity and free space on demand. Disk capacity does not generate alerts. `/services` lists the live Docker container states, including stopped and unhealthy containers. `/queue` fetches show, film, and music queues concurrently and reports partial results if a service is unavailable. OpenCode can use these commands for natural-language questions after its updated `opencode.json` is deployed.
+`/space` reports volume capacity and free space on demand. Disk capacity does not generate alerts. `/services` lists the live Docker container states, including stopped and unhealthy containers. `/queue` fetches show, film, and music queues concurrently and reports partial results if a service is unavailable. OpenCode can use these commands for natural-language questions after the updated image is deployed.
 
 The bot checks Home Assistant device availability once a minute using the existing token. It refreshes the device and entity registries every 15 minutes and reads only live states between refreshes. It sends a Telegram alert after three consecutive checks report all known states for a device as unavailable, then sends a recovery notice once a state becomes available. A Home Assistant API failure does not count as a device outage. Availability is based on Home Assistant entity states, and alert history resets when the bot restarts.
 
