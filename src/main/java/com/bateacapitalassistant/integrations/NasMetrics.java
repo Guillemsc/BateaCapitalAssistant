@@ -45,12 +45,25 @@ public final class NasMetrics {
         return result;
     }
 
-    public static ObjectNode diskActivity() throws IOException, InterruptedException {
+    public record DiskActivity(ObjectNode disks, List<String> processes) {}
+
+    public static DiskActivity diskActivity(Path proc) throws IOException, InterruptedException {
+        var processesBefore = ProcessDiskIo.readIfAvailable(proc);
+        long processStart = System.nanoTime();
         Map<String, Disk> before = disks();
-        long start = System.nanoTime();
+        long diskStart = System.nanoTime();
         Thread.sleep(2000);
         Map<String, Disk> after = disks();
-        double seconds = (System.nanoTime() - start) / 1e9;
+        double diskSeconds = (System.nanoTime() - diskStart) / 1e9;
+        var processesAfter = processesBefore == null ? null : ProcessDiskIo.readIfAvailable(proc);
+        double processSeconds = (System.nanoTime() - processStart) / 1e9;
+        List<String> processes = processesAfter == null
+                ? List.of("\nProcess disk I/O unavailable. Check the host /proc mount and permissions.")
+                : ProcessDiskIo.format(processesBefore, processesAfter, processSeconds);
+        return new DiskActivity(formatDisks(before, after, diskSeconds), processes);
+    }
+
+    private static ObjectNode formatDisks(Map<String, Disk> before, Map<String, Disk> after, double seconds) {
         ArrayNode rows = IntegrationSupport.JSON.createArrayNode();
         after.forEach((name, current) -> {
             Disk old = before.get(name);

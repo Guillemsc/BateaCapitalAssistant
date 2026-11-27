@@ -5,7 +5,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.charset.StandardCharsets;
 import java.util.regex.Pattern;
-import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
@@ -13,7 +12,6 @@ import java.util.List;
 import java.util.Map;
 
 public final class ProcessDiskIo {
-    private static final Duration SAMPLE_INTERVAL = Duration.ofSeconds(2);
     private static final int MAX_PROCESSES = 10;
     private static final int MAX_COMMAND_BYTES = 8192;
     private static final Pattern CONTAINER_ID = Pattern.compile("(?:^|/)(?:docker[-/]|libpod[-/])([0-9a-f]{12,64})(?:[/.]|$)");
@@ -31,16 +29,11 @@ public final class ProcessDiskIo {
     record Rate(String pid, String name, double readBytes, double writeBytes) {
     }
 
-    public static List<String> sample(Path proc) throws InterruptedException {
+    static Snapshot readIfAvailable(Path proc) {
         try {
-            long start = System.nanoTime();
-            Snapshot before = read(proc);
-            Thread.sleep(SAMPLE_INTERVAL);
-            Snapshot after = read(proc);
-            double seconds = (System.nanoTime() - start) / 1_000_000_000.0;
-            return format(before, after, seconds);
-        } catch (IOException e) {
-            return List.of("\nProcess disk I/O unavailable. Mount the host /proc at /host-proc.");
+            return read(proc);
+        } catch (IOException | SecurityException e) {
+            return null;
         }
     }
 

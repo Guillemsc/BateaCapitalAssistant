@@ -63,8 +63,8 @@ final class Status {
     }
 
     static String disk() throws IOException, InterruptedException {
-        var data = NasMetrics.diskActivity();
-        var processes = ProcessDiskIo.sample(java.nio.file.Path.of("/host-proc"));
+        var activity = NasMetrics.diskActivity(java.nio.file.Path.of("/host-proc"));
+        var data = activity.disks();
         var lines = new ArrayList<String>();
         lines.add("Disk activity — " + value(data, "sample_seconds", "2") + "-second sample");
         for (var row : data.path("disks"))
@@ -72,8 +72,8 @@ final class Status {
                     + ": read " + size(row.path("read_bytes_per_second")) + "/s; write "
                     + size(row.path("write_bytes_per_second")) + "/s; busy " + row.required("busy_percent").asText() + "%");
         if (data.path("disks").isEmpty()) lines.add("No supported physical-disk counters were returned.");
-        lines.addAll(processes);
-        lines.add("\nDisk and process rates are separate samples. Process counters cover storage I/O across all devices; cached I/O and kernel activity may not appear.");
+        lines.addAll(activity.processes());
+        lines.add("\nProcess rates cover all storage devices. Kernel writeback and processes that start or exit during the sample may be missing from the process list.");
         return String.join("\n", lines);
     }
 
