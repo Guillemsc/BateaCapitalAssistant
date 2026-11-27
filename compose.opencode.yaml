@@ -6,6 +6,7 @@ services:
     container_name: bateacapitalassistant
     network_mode: host
     environment:
+      BATEA_HOME_CONTROL_ENTITIES: ${BATEA_HOME_CONTROL_ENTITIES:-}
       BATEA_OPENCODE_URL: http://127.0.0.1:4196
       BATEA_MCP_TOKEN: ${BATEA_MCP_TOKEN:?Required}
       OPENCODE_SERVER_PASSWORD: ${OPENCODE_SERVER_PASSWORD:?Required}

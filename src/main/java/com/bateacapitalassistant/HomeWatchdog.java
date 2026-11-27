@@ -24,6 +24,7 @@ final class HomeWatchdog implements Runnable {
         for (var entry : devices.entrySet()) {
             String id = entry.getKey();
             var device = entry.getValue();
+            if (ignored(device.name())) continue;
             if (device.unavailable()) {
                 int count = streaks.merge(id, 1, (previous, increment) -> Math.min(REQUIRED_SAMPLES, previous + increment));
                 if (count < REQUIRED_SAMPLES) continue;
@@ -48,6 +49,12 @@ final class HomeWatchdog implements Runnable {
                 }
             }
         }
+    }
+
+    static boolean ignored(String deviceName) {
+        String name = deviceName.toLowerCase(Locale.ROOT);
+        return (name.contains("samsung") && (name.matches(".*\\btv\\b.*") || name.contains("television")))
+                || (name.contains("xiaomi") && (name.contains("box") || name.contains("decodificador")));
     }
 
     @Override public void run() {

@@ -13,6 +13,15 @@ public final class BotMcp {
         throw new UnsupportedOperationException("Telegram menu refresh is unavailable through MCP");
     });
 
+    private static final Map<String, Object> HOME_CONTROL_TOOL = Map.of(
+            "name", "home_control",
+            "description", "Control one live Home Assistant light, radiator timer, or explicitly enabled entity after an explicit user request. Discover the entity ID with /home first.",
+            "inputSchema", Map.of("type", "object", "required", List.of("entity_id", "action"),
+                    "properties", Map.of(
+                            "entity_id", Map.of("type", "string"),
+                            "action", Map.of("type", "string", "enum", List.of("turn_on", "turn_off", "start", "cancel")),
+                            "duration", Map.of("type", "string", "description", "Optional for timer start. HH:MM:SS, up to one hour. Omit for the Home Assistant default."))));
+
     public static void main(String[] args) throws Exception {
         try (var input = new BufferedReader(new InputStreamReader(System.in))) {
             for (String line; (line = input.readLine()) != null;) {
@@ -47,13 +56,22 @@ public final class BotMcp {
             case "ping" -> response.set("result", Bridge.JSON.createObjectNode());
             case "tools/list" -> response.set("result", Bridge.JSON.valueToTree(Map.of("tools", List.of(Map.of(
                     "name", "bot_command", "description", "Run an existing BateaCapitalAssistant command. Use /help to discover commands. Requests may trigger downloads.",
-                    "inputSchema", Map.of("type", "object", "properties", Map.of("command", Map.of("type", "string")), "required", List.of("command")))))));
+                    "inputSchema", Map.of("type", "object", "properties", Map.of("command", Map.of("type", "string")), "required", List.of("command"))), HOME_CONTROL_TOOL))));
             case "tools/call" -> {
                 var params = request.path("params");
                 String text = params.path("arguments").path("command").asText("").strip();
                 String command = text.isEmpty() ? "" : Commands.canonical(text.split("\\s+", 2)[0]);
                 String result;
-                if (!params.path("name").asText().equals("bot_command")) result = "Unknown tool.";
+                if (params.path("name").asText().equals("home_control")) {
+                    var args = params.path("arguments");
+                    try {
+                        result = com.bateacapitalassistant.integrations.HomeAssistant.control(
+                                args.path("entity_id").asText(""), args.path("action").asText(""),
+                                args.path("duration").asText(""));
+                    } catch (java.io.IOException e) {
+                        result = "Could not confirm the Home Assistant action. Check the entity state before repeating it.";
+                    }
+                } else if (!params.path("name").asText().equals("bot_command")) result = "Unknown tool.";
                 else if (command.equals("/help")) result = Commands.HELP;
                 else if (command.equals("/refresh") || !Commands.SUPPORTED.contains(command)) result = "Unsupported command. Use /help.";
                 else result = COMMANDS.run(command, text);

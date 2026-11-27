@@ -84,7 +84,7 @@ final class Status {
         lines.add("Home Assistant status");
         for (var row : rows.stream().limit(25).toList()) {
             String area = value(row, "area", "");
-            lines.add("• " + row.required("name").asText() + (area.isEmpty() ? "" : " [" + area + "]")
+            lines.add("• " + row.required("name").asText() + " (" + row.required("entity_id").asText() + ")" + (area.isEmpty() ? "" : " [" + area + "]")
                     + " — " + value(row, "state", "unknown"));
         }
         if (rows.size() > 25)

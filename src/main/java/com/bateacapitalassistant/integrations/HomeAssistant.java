@@ -157,6 +157,41 @@ public final class HomeAssistant {
         return states;
     }
 
+    static boolean discoverableControl(String entity) {
+        return entity.matches("light\\.[a-z0-9_]+|timer\\.[a-z0-9_]+_heat_now");
+    }
+
+    public static String control(String entity, String action, String duration) throws IOException, InterruptedException {
+        if (!entity.matches("[a-z_]+\\.[a-z0-9_]+")
+                || (!discoverableControl(entity) && Arrays.stream(System.getenv().getOrDefault("BATEA_HOME_CONTROL_ENTITIES", "").split(","))
+                .map(String::strip).noneMatch(entity::equals)))
+            return "This entity is not enabled for Telegram control.";
+
+        String domain = entity.substring(0, entity.indexOf('.'));
+        Map<String, String> body = new HashMap<>();
+        body.put("entity_id", entity);
+        if (domain.equals("timer") && action.equals("start")) {
+            if (!duration.isEmpty() && (!duration.matches("(?:00:[0-5][0-9]:[0-5][0-9]|01:00:00)") || duration.equals("00:00:00")))
+                return "Provide a timer duration between one second and one hour as HH:MM:SS.";
+            if (!duration.isEmpty()) body.put("duration", duration);
+        } else if (!duration.isEmpty() || !switch (domain) {
+            case "light", "switch", "fan", "climate" -> Set.of("turn_on", "turn_off").contains(action);
+            case "script" -> action.equals("turn_on");
+            case "timer" -> action.equals("cancel");
+            default -> false;
+        }) {
+            return "This action is not supported for the selected entity.";
+        }
+
+        var headers = Map.of("Authorization", "Bearer " + secret("homeassistant-token"));
+        JsonNode current = request(BASE + "/api/states/" + entity, null, headers, 20);
+        if (current == null || !entity.equals(current.path("entity_id").asText())
+                || Set.of("", "unavailable", "unknown").contains(current.path("state").asText()))
+            return "Home Assistant cannot confirm that " + entity + " is available.";
+        request(BASE + "/api/services/" + domain + "/" + action, body, headers, 20);
+        return "Home Assistant accepted " + action + " for " + entity + ". Check its state to verify the result.";
+    }
+
     public static ObjectNode status(String query) throws IOException, InterruptedException {
         String token = IntegrationSupport.secret("homeassistant-token");
         List<JsonNode> registries = registries(token, "area", "device", "entity");
@@ -178,7 +213,7 @@ public final class HomeAssistant {
             String name = first(value(state.path("attributes"), "friendly_name", ""), id);
             if (!query.isEmpty() && !Seerr.normalize(id + " " + name + " " + area).contains(Seerr.normalize(query)))
                 continue;
-            ObjectNode row = found.addObject().put("name", name).put("area", area);
+            ObjectNode row = found.addObject().put("name", name).put("area", area).put("entity_id", id);
             row.set("state", state.path("state"));
         }
         ObjectNode result = IntegrationSupport.JSON.createObjectNode();
